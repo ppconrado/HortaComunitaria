@@ -20,13 +20,19 @@ copy .env.example .env
 npm run dev
 ```
 
-A API expõe `GET /status`, `POST /irrigation`, `GET/POST /harvest` e `PUT /harvest/:id/reserve`. A camada MQTT está representada pelos tópicos definidos no `.env`; o próximo passo de integração é conectar o listener MQTT e persistir telemetria em MongoDB.
+A API expõe `GET /status`, `GET /telemetry/history`, `POST /irrigation`, `GET/POST /harvest` e `PUT /harvest/:id/reserve`. Com `MQTT_BROKER` configurado, ela assina telemetria e publica comandos de irrigação; sem broker ou banco, continua funcionando em modo demo.
 
 ## Arquitetura evolutiva
 
 - `src/`: aplicação React + TypeScript do painel web administrativo.
 - `backend/`: API Express com contratos compatíveis com o fluxo sensor -> backend -> app -> atuador.
-- `iot/`: reservado para o firmware ESP32 com DHT22, sensor de solo, relé e MQTT.
+- `iot/`: firmware Arduino para ESP32 com DHT22, sensor de solo, relé, limiar automático e override MQTT.
+- `app/mobile/`: aplicativo Expo com status, irrigação e colheitas.
+- `docs/`: arquitetura e contratos de integração.
+
+## Subir a apresentação completa
+
+Com Docker instalado, execute `docker compose up --build`. O painel web ficará em `http://localhost:8080`, a API em `http://localhost:3000`, MongoDB será usado para a evolução da persistência e Mosquitto ficará disponível na porta `1883`.
 
 O modo demo existe para permitir validação de UX e fluxo operacional antes da instalação do broker, banco e hardware.# React + TypeScript + Vite
 
