@@ -635,7 +635,7 @@ nav {
   color: #79a57d;
   margin-right: 4px;
 }
-+ .modal-backdrop {
+.modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(30, 50, 35, 0.35);
@@ -688,12 +688,12 @@ nav {
   color: #8c988e;
   font-size: 24px;
 }
-+ @keyframes pulse {
+@keyframes pulse {
   50% {
     transform: scale(1.12);
   }
 }
-+ @media (max-width: 900px) {
+@media (max-width: 900px) {
   .sidebar {
     width: 194px;
   }
@@ -704,7 +704,7 @@ nav {
     grid-template-columns: 1fr;
   }
 }
-+ @media (max-width: 600px) {
+@media (max-width: 600px) {
   .sidebar {
     width: 62px;
     padding: 20px 8px;
