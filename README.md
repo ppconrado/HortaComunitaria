@@ -1,4 +1,34 @@
-# React + TypeScript + Vite
+# Horta Comunitária
+
+MVP do projeto integrador HortaUrbana: painel operacional para voluntários, com monitoramento de sensores, controle híbrido de irrigação e agenda de colheitas.
+
+## Executar o painel
+
+```bash
+npm install
+npm run dev
+```
+
+Abra `http://localhost:5173`. O painel inicia com dados de demonstração e permite testar a irrigação e o cadastro de colheitas sem infraestrutura externa.
+
+## Executar a API
+
+```bash
+cd backend
+npm install
+copy .env.example .env
+npm run dev
+```
+
+A API expõe `GET /status`, `POST /irrigation`, `GET/POST /harvest` e `PUT /harvest/:id/reserve`. A camada MQTT está representada pelos tópicos definidos no `.env`; o próximo passo de integração é conectar o listener MQTT e persistir telemetria em MongoDB.
+
+## Arquitetura evolutiva
+
+- `src/`: aplicação React + TypeScript do painel web administrativo.
+- `backend/`: API Express com contratos compatíveis com o fluxo sensor -> backend -> app -> atuador.
+- `iot/`: reservado para o firmware ESP32 com DHT22, sensor de solo, relé e MQTT.
+
+O modo demo existe para permitir validação de UX e fluxo operacional antes da instalação do broker, banco e hardware.# React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
