@@ -1,15 +1,43 @@
 # Horta Comunitária
 
-MVP do projeto integrador HortaUrbana: painel operacional para voluntários, com monitoramento de sensores, controle híbrido de irrigação e agenda de colheitas.
+MVP do projeto integrador HortaUrbana: uma plataforma para monitorar hortas comunitárias, controlar a irrigação com apoio de IoT e organizar a distribuição das colheitas.
 
-## Executar o painel
+## Estado atual
+
+O repositório já contém as três camadas previstas:
+
+- **IoT:** firmware Arduino para ESP32 com sensor de umidade do solo, DHT22, relé, MQTT e irrigação automática por limiar de 40%, com override manual.
+- **Backend:** API Express com status, histórico de telemetria, irrigação, calendário e reserva de colheitas. MQTT e MongoDB são ativados quando as variáveis de ambiente estão configuradas; sem infraestrutura externa, a API opera em modo demo.
+- **Aplicação:** painel administrativo web em React + TypeScript e aplicativo mobile Expo para status, irrigação e colheitas.
+
+O painel web permite visualizar indicadores, consultar a umidade, ligar/desligar a irrigação em modo demo e cadastrar colheitas. A API publica comandos MQTT quando existe um broker configurado e grava telemetria no MongoDB quando a conexão está disponível.
+
+## Estrutura do repositório
+
+```text
+app/web/       React + TypeScript, painel administrativo
+app/mobile/    React Native + Expo, aplicativo para moradores/voluntários
+backend/       Express, MQTT, MongoDB e API REST
+iot/           Firmware ESP32 em Arduino/C++
+docs/          Arquitetura e contratos de integração
+mosquitto/     Configuração local do broker MQTT
+```
+
+## Executar o painel web
 
 ```bash
 npm --prefix app/web install
 npm run dev
 ```
 
-Abra `http://localhost:5173`. O painel inicia com dados de demonstração e permite testar a irrigação e o cadastro de colheitas sem infraestrutura externa.
+Abra `http://localhost:5173`.
+
+Para gerar e visualizar o build de produção:
+
+```bash
+npm --prefix app/web run build
+npm --prefix app/web run preview
+```
 
 ## Executar a API
 
@@ -20,49 +48,57 @@ copy .env.example .env
 npm run dev
 ```
 
-A API expõe `GET /status`, `GET /telemetry/history`, `POST /irrigation`, `GET/POST /harvest` e `PUT /harvest/:id/reserve`. Com `MQTT_BROKER` configurado, ela assina telemetria e publica comandos de irrigação; sem broker ou banco, continua funcionando em modo demo.
+Principais endpoints:
 
-## Arquitetura evolutiva
+- `GET /health`
+- `GET /status`
+- `GET /telemetry/history`
+- `POST /irrigation` com `{ "action": "on" }` ou `{ "action": "off" }`
+- `GET /harvest`
+- `POST /harvest`
+- `PUT /harvest/:id/reserve`
 
-- `app/web/`: aplicação React + TypeScript do painel web administrativo.
-- `backend/`: API Express com contratos compatíveis com o fluxo sensor -> backend -> app -> atuador.
-- `iot/`: firmware Arduino para ESP32 com DHT22, sensor de solo, relé, limiar automático e override MQTT.
-- `app/mobile/`: aplicativo Expo com status, irrigação e colheitas.
-- `docs/`: arquitetura e contratos de integração.
+## Executar as três camadas com Docker
 
-## Subir a apresentação completa
+Com Docker Desktop instalado:
 
-Com Docker instalado, execute `docker compose up --build`. O painel web ficará em `http://localhost:8080`, a API em `http://localhost:3000`, MongoDB será usado para a evolução da persistência e Mosquitto ficará disponível na porta `1883`.
-
-O modo demo existe para permitir validação de UX e fluxo operacional antes da instalação do broker, banco e hardware.# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+docker compose up --build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+- Painel web: `http://localhost:8080`
+- API: `http://localhost:3000`
+- MongoDB: porta `27017` na rede Docker
+- Mosquitto: `localhost:1883`
+
+## Configuração MQTT e MongoDB
+
+Copie `backend/.env.example` para `backend/.env` quando executar o backend fora do Docker:
+
+```env
+PORT=3000
+MQTT_BROKER=mqtt://localhost:1883
+MQTT_TELEMETRY_TOPIC=horta/telemetry
+MQTT_IRRIGATION_TOPIC=horta/irrigation
+MONGO_URI=mongodb://localhost:27017/horta-comunitaria
+```
+
+Tópicos MQTT:
+
+- `horta/telemetry`: telemetria do ESP32.
+- `horta/irrigation`: comandos `on` e `off` para o relé.
+
+## Próximas evoluções
+
+Estas funcionalidades fazem parte do roadmap e ainda não devem ser apresentadas como concluídas:
+
+1. Conectar o aplicativo mobile à API com autenticação e configuração de ambiente por dispositivo.
+2. Criar autenticação e perfis separados para voluntários e moradores.
+3. Persistir também colheitas e reservas em MongoDB, substituindo o armazenamento temporário em memória.
+4. Adicionar testes automatizados de API e testes ponta a ponta com simulador MQTT.
+5. Implementar alertas, relatórios de eficiência hídrica e histórico visual no painel.
+6. Validar o circuito ESP32, relé e válvula em bancada antes do uso em campo.
+
+## Documentação técnica
+
+A visão das integrações entre sensor, MQTT, backend, banco, web, mobile e atuador está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
