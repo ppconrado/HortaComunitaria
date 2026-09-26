@@ -5,7 +5,7 @@ MVP do projeto integrador HortaUrbana: painel operacional para voluntários, com
 ## Executar o painel
 
 ```bash
-npm install
+npm --prefix app/web install
 npm run dev
 ```
 
@@ -24,7 +24,7 @@ A API expõe `GET /status`, `GET /telemetry/history`, `POST /irrigation`, `GET/P
 
 ## Arquitetura evolutiva
 
-- `src/`: aplicação React + TypeScript do painel web administrativo.
+- `app/web/`: aplicação React + TypeScript do painel web administrativo.
 - `backend/`: API Express com contratos compatíveis com o fluxo sensor -> backend -> app -> atuador.
 - `iot/`: firmware Arduino para ESP32 com DHT22, sensor de solo, relé, limiar automático e override MQTT.
 - `app/mobile/`: aplicativo Expo com status, irrigação e colheitas.
