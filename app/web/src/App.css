@@ -204,6 +204,37 @@ nav {
   margin: 0 auto;
   padding: 41px 5.3% 30px;
 }
+.api-error,
+.loading-state {
+  border-radius: 7px;
+  font-size: 11px;
+  margin-bottom: 18px;
+  padding: 11px 14px;
+}
+.api-error {
+  align-items: center;
+  background: #fff1ed;
+  border: 1px solid #f2c9bd;
+  color: #8a493d;
+  display: flex;
+  gap: 10px;
+}
+.api-error span {
+  color: #a56b5d;
+  flex: 1;
+}
+.api-error button {
+  background: transparent;
+  border: 0;
+  color: #8a493d;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0;
+}
+.loading-state {
+  background: #eef5ed;
+  color: #5e8063;
+}
 .page-heading {
   display: flex;
   justify-content: space-between;
@@ -568,6 +599,10 @@ nav {
 .irrigation-button.stop {
   border-color: #e2a6a6;
   color: #aa5555;
+}
+.irrigation-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 .irrigation-button span {
   font-size: 10px;

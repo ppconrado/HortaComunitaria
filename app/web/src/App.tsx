@@ -1,61 +1,172 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
 
 type Harvest = {
+  id?: string;
   crop: string;
-  date: string;
-  quantity: string;
-  status: 'Pronta' | 'Em breve';
+  harvestDate: string;
+  quantity: number;
+  available: boolean;
 };
-const initialHarvests: Harvest[] = [
-  {
-    crop: 'Alface crespa',
-    date: 'Hoje, 16:00',
-    quantity: '24 unidades',
-    status: 'Pronta',
-  },
-  {
-    crop: 'Cebolinha',
-    date: 'Amanhã, 08:30',
-    quantity: '18 maços',
-    status: 'Em breve',
-  },
-  {
-    crop: 'Tomate cereja',
-    date: '28 set, 09:00',
-    quantity: '12 kg',
-    status: 'Em breve',
-  },
-];
+
+type Telemetry = {
+  soilMoisture: number;
+  temperature: number;
+  humidity: number;
+  timestamp: string;
+};
+
+type Status = Telemetry & {
+  irrigation: {
+    active: boolean;
+    mode: string;
+    updatedAt: string;
+  };
+};
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+async function requestApi<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error || 'Não foi possível comunicar com a API.');
+  }
+  return body as T;
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function buildChartPoints(history: Telemetry[]) {
+  if (history.length < 2) return '0,115 720,115';
+  const values = history.map((item) => item.soilMoisture);
+  const maximum = Math.max(...values, 80);
+  const minimum = Math.min(...values, 0);
+  const range = Math.max(maximum - minimum, 1);
+  return history
+    .map((item, index) => {
+      const x = (index / (history.length - 1)) * 720;
+      const y = 210 - ((item.soilMoisture - minimum) / range) * 180;
+      return `${x},${y}`;
+    })
+    .join(' ');
+}
 
 function App() {
   const [activeSection, setActiveSection] = useState('Visão geral');
-  const [irrigationOn, setIrrigationOn] = useState(false);
-  const [harvests, setHarvests] = useState(initialHarvests);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [history, setHistory] = useState<Telemetry[]>([]);
+  const [harvests, setHarvests] = useState<Harvest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [requestError, setRequestError] = useState('');
+  const [irrigationPending, setIrrigationPending] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [newCrop, setNewCrop] = useState('');
   const [newDate, setNewDate] = useState('');
+  const irrigationOn = status?.irrigation.active ?? false;
+  const latestTelemetry = status;
+  const chartHistory = [...history].reverse().slice(-24);
+  const chartPoints = buildChartPoints(chartHistory);
   const statusLabel = useMemo(
     () =>
       irrigationOn ? 'Irrigação manual ativa' : 'Operação automática ativa',
     [irrigationOn],
   );
 
-  function addHarvest(event: React.FormEvent<HTMLFormElement>) {
+  async function loadDashboard() {
+    try {
+      const [nextStatus, nextHistory, nextHarvests] = await Promise.all([
+        requestApi<Status>('/status'),
+        requestApi<Telemetry[]>('/telemetry/history'),
+        requestApi<Harvest[]>('/harvest'),
+      ]);
+      setStatus(nextStatus);
+      setHistory(nextHistory);
+      setHarvests(nextHarvests);
+      setRequestError('');
+    } catch (error) {
+      setRequestError(
+        error instanceof Error ? error.message : 'API indisponível.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const initialLoadTimer = window.setTimeout(() => {
+      void loadDashboard();
+    }, 0);
+    const refreshTimer = window.setInterval(() => {
+      requestApi<Status>('/status')
+        .then(setStatus)
+        .catch((error: unknown) =>
+          setRequestError(
+            error instanceof Error ? error.message : 'API indisponível.',
+          ),
+        );
+    }, 10000);
+    return () => {
+      window.clearTimeout(initialLoadTimer);
+      window.clearInterval(refreshTimer);
+    };
+  }, []);
+
+  async function toggleIrrigation() {
+    setIrrigationPending(true);
+    try {
+      const nextStatus = await requestApi<{ irrigation: Status['irrigation'] }>(
+        '/irrigation',
+        {
+          method: 'POST',
+          body: JSON.stringify({ action: irrigationOn ? 'off' : 'on' }),
+        },
+      );
+      setStatus((current) =>
+        current ? { ...current, irrigation: nextStatus.irrigation } : current,
+      );
+      setRequestError('');
+    } catch (error) {
+      setRequestError(
+        error instanceof Error
+          ? error.message
+          : 'Falha ao controlar irrigação.',
+      );
+    } finally {
+      setIrrigationPending(false);
+    }
+  }
+
+  async function addHarvest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newCrop || !newDate) return;
-    setHarvests((current) => [
-      ...current,
-      {
-        crop: newCrop,
-        date: newDate,
-        quantity: 'A definir',
-        status: 'Em breve',
-      },
-    ]);
-    setNewCrop('');
-    setNewDate('');
-    setShowForm(false);
+    try {
+      const harvest = await requestApi<Harvest>('/harvest', {
+        method: 'POST',
+        body: JSON.stringify({ crop: newCrop, harvestDate: newDate }),
+      });
+      setHarvests((current) => [...current, harvest]);
+      setNewCrop('');
+      setNewDate('');
+      setShowForm(false);
+      setRequestError('');
+    } catch (error) {
+      setRequestError(
+        error instanceof Error ? error.message : 'Falha ao criar colheita.',
+      );
+    }
   }
 
   return (
@@ -118,6 +229,16 @@ function App() {
           </div>
         </header>
         <section className="content-wrap">
+          {requestError && (
+            <div className="api-error" role="alert">
+              <strong>API indisponível</strong>
+              <span>{requestError}</span>
+              <button onClick={loadDashboard}>Tentar novamente</button>
+            </div>
+          )}
+          {loading && (
+            <div className="loading-state">Carregando dados da horta...</div>
+          )}
           <div className="page-heading">
             <div>
               <p className="eyebrow">SÁBADO, 26 DE SETEMBRO DE 2026</p>
@@ -167,7 +288,8 @@ function App() {
                 <span className="status-pill attention">Atenção</span>
               </div>
               <div className="stat-value">
-                42<small>%</small>
+                {latestTelemetry?.soilMoisture ?? '--'}
+                <small>%</small>
               </div>
               <div className="stat-foot">Ideal entre 50% e 70%</div>
             </div>
@@ -177,10 +299,12 @@ function App() {
                 <span className="status-pill healthy">Ideal</span>
               </div>
               <div className="stat-value">
-                26<small>°C</small>
+                {latestTelemetry?.temperature ?? '--'}
+                <small>°C</small>
               </div>
               <div className="stat-foot">
-                Umidade do ar: <strong>68%</strong>
+                Umidade do ar:{' '}
+                <strong>{latestTelemetry?.humidity ?? '--'}%</strong>
               </div>
             </div>
             <div className="stat-card">
@@ -188,9 +312,15 @@ function App() {
                 <span>PRÓXIMA COLHEITA</span>
                 <span className="calendar-mini">▣</span>
               </div>
-              <div className="stat-value date-value">Hoje</div>
+              <div className="stat-value date-value">
+                {harvests[0] ? formatDate(harvests[0].harvestDate) : '--'}
+              </div>
               <div className="stat-foot">
-                <strong>Alface crespa</strong> · 16:00
+                {harvests[0] ? (
+                  <strong>{harvests[0].crop}</strong>
+                ) : (
+                  'Sem colheitas cadastradas'
+                )}
               </div>
             </div>
           </div>
@@ -240,14 +370,15 @@ function App() {
                       </linearGradient>
                     </defs>
                     <path
-                      d="M0,115 C50,120 60,130 115,92 S180,112 230,137 S290,130 340,152 S400,128 455,142 S510,95 560,110 S625,67 720,86 L720,230 L0,230Z"
-                      fill="url(#area-fill)"
-                    />
-                    <path
-                      d="M0,115 C50,120 60,130 115,92 S180,112 230,137 S290,130 340,152 S400,128 455,142 S510,95 560,110 S625,67 720,86"
+                      points={chartPoints}
                       fill="none"
                       stroke="#3f7a4b"
                       strokeWidth="3"
+                      strokeLinejoin="round"
+                    />
+                    <polyline
+                      points={`${chartPoints} 720,230 0,230`}
+                      fill="url(#area-fill)"
                     />
                   </svg>
                   <div className="chart-labels">
@@ -300,10 +431,15 @@ function App() {
                 className={
                   irrigationOn ? 'irrigation-button stop' : 'irrigation-button'
                 }
-                onClick={() => setIrrigationOn(!irrigationOn)}
+                onClick={toggleIrrigation}
+                disabled={irrigationPending || !status}
               >
                 <span>{irrigationOn ? '■' : '▶'}</span>
-                {irrigationOn ? 'Desligar irrigação' : 'Ligar irrigação'}
+                {irrigationPending
+                  ? 'Enviando comando...'
+                  : irrigationOn
+                    ? 'Desligar irrigação'
+                    : 'Ligar irrigação'}
               </button>
             </section>
           </div>
@@ -324,23 +460,24 @@ function App() {
               {harvests.map((harvest) => (
                 <div
                   className="harvest-row"
-                  key={`${harvest.crop}-${harvest.date}`}
+                  key={harvest.id || `${harvest.crop}-${harvest.harvestDate}`}
                 >
                   <div className="crop-avatar">{harvest.crop.charAt(0)}</div>
                   <div className="crop-info">
                     <strong>{harvest.crop}</strong>
                     <span>
-                      {harvest.date} · {harvest.quantity}
+                      {formatDate(harvest.harvestDate)} ·{' '}
+                      {harvest.quantity || 'A definir'}
                     </span>
                   </div>
                   <span
                     className={
-                      harvest.status === 'Pronta'
+                      harvest.available
                         ? 'status-pill ready'
                         : 'status-pill upcoming'
                     }
                   >
-                    {harvest.status}
+                    {harvest.available ? 'Disponível' : 'Reservada'}
                   </span>
                   <button
                     className="row-menu"
