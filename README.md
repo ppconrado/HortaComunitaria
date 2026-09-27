@@ -7,7 +7,7 @@ MVP do projeto integrador HortaUrbana: uma plataforma para monitorar hortas comu
 O repositório já contém as três camadas previstas:
 
 - **IoT:** firmware Arduino para ESP32 com sensor de umidade do solo, DHT22, relé, MQTT e irrigação automática por limiar de 40%, com override manual.
-- **Backend:** API Express com status, histórico de telemetria, irrigação, calendário e reserva de colheitas. MQTT e MongoDB são ativados quando as variáveis de ambiente estão configuradas; sem infraestrutura externa, a API opera em modo demo.
+- **Backend:** API Express com status, histórico de telemetria, irrigação, calendário e reserva de colheitas. Telemetria, colheitas e reservas são persistidas no MongoDB quando a infraestrutura está disponível; sem MongoDB, a API opera com dados de demonstração em memória.
 - **Aplicação:** painel administrativo web em React + TypeScript e aplicativo mobile Expo para status, irrigação e colheitas.
 
 O painel web permite visualizar indicadores, consultar a umidade, ligar/desligar a irrigação em modo demo e cadastrar colheitas. A API publica comandos MQTT quando existe um broker configurado e grava telemetria no MongoDB quando a conexão está disponível.
@@ -112,10 +112,9 @@ Estas funcionalidades fazem parte do roadmap e ainda não devem ser apresentadas
 
 1. Conectar o aplicativo mobile à API com autenticação e configuração de ambiente por dispositivo.
 2. Criar autenticação e perfis separados para voluntários e moradores.
-3. Persistir também colheitas e reservas em MongoDB, substituindo o armazenamento temporário em memória.
-4. Adicionar testes automatizados de API e testes ponta a ponta com simulador MQTT.
-5. Implementar alertas, relatórios de eficiência hídrica e histórico visual no painel.
-6. Validar o circuito ESP32, relé e válvula em bancada antes do uso em campo.
+3. Adicionar testes automatizados de API e testes ponta a ponta com simulador MQTT.
+4. Implementar alertas, relatórios de eficiência hídrica e histórico visual no painel.
+5. Validar o circuito ESP32, relé e válvula em bancada antes do uso em campo.
 
 A base já sobe em Docker e possui o fluxo MQTT descrito, mas o backend ainda mistura operação real com modo demo: telemetria histórica é limitada em memória e colheitas/reservas não persistem. Vou confirmar agora como os clientes consomem a API e se há alguma lacuna de configuração que impeça o primeiro funcionamento integrado.
 

@@ -3,6 +3,7 @@ import cors from 'cors';
 import express from 'express';
 import mongoose from 'mongoose';
 import mqtt from 'mqtt';
+import { Harvest } from './models/Harvest.js';
 import { Telemetry } from './models/Telemetry.js';
 
 const app = express();
@@ -19,7 +20,7 @@ let latestTelemetry = {
   timestamp: new Date().toISOString(),
 };
 const telemetryHistory = [latestTelemetry];
-const harvests = [
+const demoHarvests = [
   {
     id: 'harvest-1',
     crop: 'Alface crespa',
@@ -35,6 +36,29 @@ const harvests = [
     quantity: 18,
   },
 ];
+
+function isMongoReady() {
+  return mongoose.connection.readyState === 1;
+}
+
+function serializeHarvest(harvest) {
+  const item = harvest.toObject ? harvest.toObject() : harvest;
+  return {
+    ...item,
+    id: item.id || item._id?.toString(),
+    _id: undefined,
+    harvestDate: new Date(item.harvestDate).toISOString(),
+    reservedAt: item.reservedAt
+      ? new Date(item.reservedAt).toISOString()
+      : undefined,
+  };
+}
+
+async function seedHarvests() {
+  if ((await Harvest.countDocuments()) > 0) return;
+  await Harvest.insertMany(demoHarvests);
+  console.log('Colheitas iniciais criadas');
+}
 
 app.use(cors());
 app.use(express.json());
@@ -72,40 +96,79 @@ app.post('/irrigation', (request, response) => {
   }
   response.json({ message: `Irrigação ${action}`, irrigation });
 });
-app.get('/harvest', (_request, response) => response.json(harvests));
-app.post('/harvest', (request, response) => {
+app.get('/harvest', async (_request, response) => {
+  if (!isMongoReady()) return response.json(demoHarvests);
+  const harvests = await Harvest.find().sort({ harvestDate: 1 }).lean();
+  response.json(harvests.map(serializeHarvest));
+});
+app.post('/harvest', async (request, response) => {
   const { crop, harvestDate, quantity = 0 } = request.body;
+  const parsedHarvestDate = new Date(harvestDate);
+  const parsedQuantity = Number(quantity);
   if (!crop || !harvestDate)
     return response
       .status(400)
       .json({ error: 'crop e harvestDate são obrigatórios.' });
+  if (Number.isNaN(parsedHarvestDate.getTime()))
+    return response.status(400).json({ error: 'harvestDate inválida.' });
+  if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0)
+    return response.status(400).json({ error: 'quantity inválida.' });
   const harvest = {
-    id: `harvest-${harvests.length + 1}`,
+    id: `harvest-${Date.now()}`,
     crop,
-    harvestDate,
-    quantity,
+    harvestDate: parsedHarvestDate,
+    quantity: parsedQuantity,
     available: true,
   };
-  harvests.push(harvest);
-  response.status(201).json(harvest);
+  if (!isMongoReady()) {
+    demoHarvests.push(harvest);
+    return response.status(201).json(harvest);
+  }
+  const createdHarvest = await Harvest.create(harvest);
+  response.status(201).json(serializeHarvest(createdHarvest));
 });
-app.put('/harvest/:id/reserve', (request, response) => {
-  const harvest = harvests.find((item) => item.id === request.params.id);
+app.put('/harvest/:id/reserve', async (request, response) => {
+  if (isMongoReady()) {
+    const harvest = await Harvest.findOneAndUpdate(
+      { id: request.params.id, available: true },
+      {
+        $set: {
+          available: false,
+          reservedBy: request.body.reservedBy || 'Morador',
+          reservedAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+    if (harvest) return response.json(serializeHarvest(harvest));
+    const existingHarvest = await Harvest.exists({ id: request.params.id });
+    if (!existingHarvest)
+      return response.status(404).json({ error: 'Colheita não encontrada.' });
+    return response.status(409).json({ error: 'Colheita já reservada.' });
+  }
+
+  const harvest = demoHarvests.find((item) => item.id === request.params.id);
   if (!harvest)
     return response.status(404).json({ error: 'Colheita não encontrada.' });
   if (!harvest.available)
     return response.status(409).json({ error: 'Colheita já reservada.' });
   harvest.available = false;
   harvest.reservedBy = request.body.reservedBy || 'Morador';
+  harvest.reservedAt = new Date().toISOString();
   response.json(harvest);
 });
 
-function connectIntegrations() {
+async function connectIntegrations() {
   if (process.env.MONGO_URI) {
-    mongoose
-      .connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 2500 })
-      .then(() => console.log('MongoDB conectado'))
-      .catch(() => console.log('MongoDB indisponível; usando memória'));
+    try {
+      await mongoose.connect(process.env.MONGO_URI, {
+        serverSelectionTimeoutMS: 2500,
+      });
+      await seedHarvests();
+      console.log('MongoDB conectado');
+    } catch {
+      console.log('MongoDB indisponível; usando memória');
+    }
   }
 
   if (process.env.MQTT_BROKER) {
@@ -138,7 +201,9 @@ function connectIntegrations() {
   }
 }
 
-connectIntegrations();
+connectIntegrations().catch(() =>
+  console.log('Falha ao inicializar integrações; usando memória'),
+);
 app.listen(port, () =>
   console.log(`Horta Comunitária API disponível em http://localhost:${port}`),
 );
