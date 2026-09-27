@@ -125,6 +125,10 @@ nav {
   margin-top: 4px;
   box-shadow: 0 0 0 3px #e3f2e5;
 }
+.online-dot.offline {
+  background: #c96d5c;
+  box-shadow: 0 0 0 3px #fbe7e2;
+}
 .main-content {
   flex: 1;
   min-width: 0;
@@ -203,6 +207,9 @@ nav {
   max-width: 1240px;
   margin: 0 auto;
   padding: 41px 5.3% 30px;
+}
+.section-hidden {
+  display: none !important;
 }
 .api-error,
 .loading-state {
@@ -658,6 +665,30 @@ nav {
   border: 0;
   background: transparent;
   letter-spacing: 2px;
+}
+.reserve-button {
+  border: 1px solid #9bbb9d;
+  border-radius: 5px;
+  background: #f5fbf4;
+  color: #3d7548;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.reserve-button:hover {
+  background: #e7f3e6;
+}
+.reserve-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.empty-state {
+  border-top: 1px solid #edf0ed;
+  color: #98a39b;
+  font-size: 11px;
+  padding: 18px 0 4px;
+  text-align: center;
 }
 .page-footer {
   display: flex;

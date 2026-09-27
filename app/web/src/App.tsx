@@ -7,6 +7,8 @@ type Harvest = {
   harvestDate: string;
   quantity: number;
   available: boolean;
+  reservedBy?: string;
+  reservedAt?: string;
 };
 
 type Telemetry = {
@@ -69,16 +71,36 @@ function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [history, setHistory] = useState<Telemetry[]>([]);
   const [harvests, setHarvests] = useState<Harvest[]>([]);
+  const [harvestFilter, setHarvestFilter] = useState<'all' | 'available'>(
+    'all',
+  );
+  const [historyRange, setHistoryRange] = useState('24');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [requestError, setRequestError] = useState('');
   const [irrigationPending, setIrrigationPending] = useState(false);
+  const [reservingId, setReservingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [newCrop, setNewCrop] = useState('');
   const [newDate, setNewDate] = useState('');
+  const [newQuantity, setNewQuantity] = useState('');
   const irrigationOn = status?.irrigation.active ?? false;
   const latestTelemetry = status;
-  const chartHistory = [...history].reverse().slice(-24);
+  const rangeHours = Number(historyRange);
+  const chartHistory = [...history]
+    .reverse()
+    .filter(
+      (item) =>
+        currentTime - new Date(item.timestamp).getTime() <=
+        rangeHours * 60 * 60 * 1000,
+    )
+    .slice(-24);
   const chartPoints = buildChartPoints(chartHistory);
+  const filteredHarvests = harvests.filter(
+    (harvest) => harvestFilter === 'all' || harvest.available,
+  );
+  const apiOnline = Boolean(status) && !requestError;
   const statusLabel = useMemo(
     () =>
       irrigationOn ? 'Irrigação manual ativa' : 'Operação automática ativa',
@@ -95,6 +117,8 @@ function App() {
       setStatus(nextStatus);
       setHistory(nextHistory);
       setHarvests(nextHarvests);
+      setLastSyncedAt(new Date().toISOString());
+      setCurrentTime(Date.now());
       setRequestError('');
     } catch (error) {
       setRequestError(
@@ -112,6 +136,10 @@ function App() {
     const refreshTimer = window.setInterval(() => {
       requestApi<Status>('/status')
         .then(setStatus)
+        .then(() => {
+          setLastSyncedAt(new Date().toISOString());
+          setCurrentTime(Date.now());
+        })
         .catch((error: unknown) =>
           setRequestError(
             error instanceof Error ? error.message : 'API indisponível.',
@@ -149,17 +177,46 @@ function App() {
     }
   }
 
+  async function reserveHarvest(harvest: Harvest) {
+    if (!harvest.id || !harvest.available) return;
+    setReservingId(harvest.id);
+    try {
+      const reserved = await requestApi<Harvest>(
+        `/harvest/${harvest.id}/reserve`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ reservedBy: 'José Silva' }),
+        },
+      );
+      setHarvests((current) =>
+        current.map((item) => (item.id === reserved.id ? reserved : item)),
+      );
+      setRequestError('');
+    } catch (error) {
+      setRequestError(
+        error instanceof Error ? error.message : 'Falha ao reservar colheita.',
+      );
+    } finally {
+      setReservingId(null);
+    }
+  }
+
   async function addHarvest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newCrop || !newDate) return;
     try {
       const harvest = await requestApi<Harvest>('/harvest', {
         method: 'POST',
-        body: JSON.stringify({ crop: newCrop, harvestDate: newDate }),
+        body: JSON.stringify({
+          crop: newCrop,
+          harvestDate: newDate,
+          quantity: Number(newQuantity || 0),
+        }),
       });
       setHarvests((current) => [...current, harvest]);
       setNewCrop('');
       setNewDate('');
+      setNewQuantity('');
       setShowForm(false);
       setRequestError('');
     } catch (error) {
@@ -201,10 +258,16 @@ function App() {
           )}
         </nav>
         <div className="sidebar-footer">
-          <span className="online-dot"></span>
+          <span
+            className={apiOnline ? 'online-dot' : 'online-dot offline'}
+          ></span>
           <div>
-            <strong>Sistema online</strong>
-            <small>Última sincronização há 2 min</small>
+            <strong>{apiOnline ? 'Sistema online' : 'API desconectada'}</strong>
+            <small>
+              {lastSyncedAt
+                ? `Sincronizado às ${new Date(lastSyncedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                : 'Aguardando sincronização'}
+            </small>
           </div>
         </div>
       </aside>
@@ -241,22 +304,45 @@ function App() {
           )}
           <div className="page-heading">
             <div>
-              <p className="eyebrow">SÁBADO, 26 DE SETEMBRO DE 2026</p>
+              <p className="eyebrow">
+                {new Intl.DateTimeFormat('pt-BR', {
+                  weekday: 'long',
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                })
+                  .format(new Date())
+                  .toUpperCase()}
+              </p>
               <h1>
-                Bom dia, José <span>☀</span>
+                {activeSection === 'Visão geral'
+                  ? 'Bom dia, José'
+                  : activeSection}
+                {activeSection === 'Visão geral' && <span>☀</span>}
               </h1>
               <p className="subheading">
-                Aqui está o que está acontecendo na horta hoje.
+                {activeSection === 'Colheitas'
+                  ? 'Cadastre, acompanhe e reserve alimentos da horta.'
+                  : activeSection === 'Histórico'
+                    ? 'Acompanhe a evolução da umidade do solo.'
+                    : activeSection === 'Irrigação'
+                      ? 'Controle o sistema e acompanhe o estado atual.'
+                      : 'Aqui está o que está acontecendo na horta hoje.'}
               </p>
             </div>
-            <button
-              className="primary-button"
-              onClick={() => setShowForm(true)}
-            >
-              <span>+</span> Nova colheita
-            </button>
+            {(activeSection === 'Visão geral' ||
+              activeSection === 'Colheitas') && (
+              <button
+                className="primary-button"
+                onClick={() => setShowForm(true)}
+              >
+                <span>+</span> Nova colheita
+              </button>
+            )}
           </div>
-          <div className="alert-banner">
+          <div
+            className={`alert-banner ${activeSection === 'Colheitas' || activeSection === 'Histórico' ? 'section-hidden' : ''}`}
+          >
             <span className="alert-icon">!</span>
             <div>
               <strong>Atenção necessária</strong>
@@ -269,7 +355,9 @@ function App() {
               Ver irrigação <span>→</span>
             </button>
           </div>
-          <div className="stats-grid">
+          <div
+            className={`stats-grid ${activeSection !== 'Visão geral' ? 'section-hidden' : ''}`}
+          >
             <div className="stat-card">
               <div className="stat-top">
                 <span>SAÚDE DA HORTA</span>
@@ -324,16 +412,27 @@ function App() {
               </div>
             </div>
           </div>
-          <div className="dashboard-grid">
-            <section className="panel chart-panel">
+          <div
+            className={`dashboard-grid ${activeSection === 'Colheitas' ? 'section-hidden' : ''}`}
+          >
+            <section
+              className={`panel chart-panel ${activeSection !== 'Visão geral' && activeSection !== 'Histórico' ? 'section-hidden' : ''}`}
+            >
               <div className="panel-heading">
                 <div>
                   <h2>Umidade do solo</h2>
                   <p>Últimas 24 horas</p>
                 </div>
-                <button className="select-button">
-                  24 horas <span>⌄</span>
-                </button>
+                <select
+                  className="select-button"
+                  value={historyRange}
+                  onChange={(event) => setHistoryRange(event.target.value)}
+                  aria-label="Período do histórico"
+                >
+                  <option value="24">24 horas</option>
+                  <option value="168">7 dias</option>
+                  <option value="720">30 dias</option>
+                </select>
               </div>
               <div className="chart">
                 <div className="chart-y">
@@ -400,7 +499,9 @@ function App() {
                 </span>
               </div>
             </section>
-            <section className="panel irrigation-panel">
+            <section
+              className={`panel irrigation-panel ${activeSection !== 'Visão geral' && activeSection !== 'Irrigação' ? 'section-hidden' : ''}`}
+            >
               <div className="panel-heading">
                 <div>
                   <h2>Irrigação</h2>
@@ -443,21 +544,37 @@ function App() {
               </button>
             </section>
           </div>
-          <section className="panel harvest-panel">
+          <section
+            className={`panel harvest-panel ${activeSection !== 'Visão geral' && activeSection !== 'Colheitas' ? 'section-hidden' : ''}`}
+          >
             <div className="panel-heading">
               <div>
                 <h2>Próximas colheitas</h2>
                 <p>Organize a distribuição dos alimentos</p>
               </div>
-              <button
-                className="text-button"
-                onClick={() => setActiveSection('Colheitas')}
-              >
-                Ver calendário <span>→</span>
-              </button>
+              {activeSection === 'Visão geral' ? (
+                <button
+                  className="text-button"
+                  onClick={() => setActiveSection('Colheitas')}
+                >
+                  Ver calendário <span>→</span>
+                </button>
+              ) : (
+                <select
+                  className="select-button"
+                  value={harvestFilter}
+                  onChange={(event) =>
+                    setHarvestFilter(event.target.value as 'all' | 'available')
+                  }
+                  aria-label="Filtrar colheitas"
+                >
+                  <option value="all">Todas</option>
+                  <option value="available">Disponíveis</option>
+                </select>
+              )}
             </div>
             <div className="harvest-list">
-              {harvests.map((harvest) => (
+              {filteredHarvests.map((harvest) => (
                 <div
                   className="harvest-row"
                   key={harvest.id || `${harvest.crop}-${harvest.harvestDate}`}
@@ -479,14 +596,22 @@ function App() {
                   >
                     {harvest.available ? 'Disponível' : 'Reservada'}
                   </span>
-                  <button
-                    className="row-menu"
-                    aria-label={`Mais opções para ${harvest.crop}`}
-                  >
-                    •••
-                  </button>
+                  {activeSection === 'Colheitas' && harvest.available && (
+                    <button
+                      className="reserve-button"
+                      onClick={() => reserveHarvest(harvest)}
+                      disabled={reservingId === harvest.id}
+                    >
+                      {reservingId === harvest.id
+                        ? 'Reservando...'
+                        : 'Reservar'}
+                    </button>
+                  )}
                 </div>
               ))}
+              {!filteredHarvests.length && (
+                <div className="empty-state">Nenhuma colheita encontrada.</div>
+              )}
             </div>
           </section>
           <footer className="page-footer">
@@ -530,6 +655,17 @@ function App() {
                 value={newDate}
                 onChange={(event) => setNewDate(event.target.value)}
                 required
+              />
+            </label>
+            <label>
+              Quantidade
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={newQuantity}
+                onChange={(event) => setNewQuantity(event.target.value)}
+                placeholder="Ex.: 24"
               />
             </label>
             <button className="primary-button" type="submit">
