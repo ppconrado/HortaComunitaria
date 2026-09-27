@@ -4,7 +4,7 @@
   "private": true,
   "main": "expo/AppEntry.js",
   "scripts": {
-    "start": "expo start"
+    "start": "expo start --lan"
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^7.4.7",

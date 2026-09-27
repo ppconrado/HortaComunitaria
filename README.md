@@ -58,6 +58,21 @@ Principais endpoints:
 - `POST /harvest`
 - `PUT /harvest/:id/reserve`
 
+## Executar o aplicativo mobile
+
+Na pasta `app/mobile`, copie `.env.example` para `.env` e ajuste o IP para o endereço IPv4 desta máquina na rede local:
+
+```bash
+cd app/mobile
+copy .env.example .env
+npm install
+npm start
+```
+
+O celular e o computador precisam estar na mesma rede Wi-Fi. Não use `localhost` no celular: nesse caso, `localhost` aponta para o próprio aparelho. Para Android Emulator, use `http://10.0.2.2:3000`; para um celular físico, use o IP local da máquina.
+
+Se o Expo informar que a conexão de dados não é permitida, feche sessões antigas do Expo, execute `npm start` novamente e abra o QR Code da sessão LAN atual. Caso a porta `8081` esteja ocupada, aceite a próxima porta sugerida pelo Expo. Desative temporariamente VPN, dados móveis e isolamento de rede da rede Wi-Fi durante o teste.
+
 ## Executar as três camadas com Docker
 
 Com Docker Desktop instalado:

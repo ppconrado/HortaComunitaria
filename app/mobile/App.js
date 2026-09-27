@@ -11,7 +11,19 @@ import {
 import { useEffect, useState } from 'react';
 
 const Tab = createBottomTabNavigator();
-const API_URL = 'http://SEU_IP_LOCAL:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.51:3000';
+
+async function requestApi(path, options) {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error || 'Não foi possível comunicar com a API.');
+  }
+  return body;
+}
 
 function StatusScreen() {
   const [status, setStatus] = useState({
@@ -19,16 +31,24 @@ function StatusScreen() {
     temperature: 26,
     humidity: 68,
   });
+  const [error, setError] = useState('');
   useEffect(() => {
-    fetch(`${API_URL}/status`)
-      .then((response) => response.json())
-      .then(setStatus)
-      .catch(() => {});
+    const loadStatus = () =>
+      requestApi('/status')
+        .then((nextStatus) => {
+          setStatus(nextStatus);
+          setError('');
+        })
+        .catch((requestError) => setError(requestError.message));
+    loadStatus();
+    const refreshTimer = setInterval(loadStatus, 10000);
+    return () => clearInterval(refreshTimer);
   }, []);
   return (
     <SafeAreaView style={styles.screen}>
       <Text style={styles.kicker}>HORTA NORTE</Text>
       <Text style={styles.title}>Saúde da horta</Text>
+      {error ? <ConnectionMessage message={error} /> : null}
       <View style={styles.hero}>
         <Text style={styles.heroValue}>{status.soilMoisture}%</Text>
         <Text style={styles.heroLabel}>umidade do solo</Text>
@@ -41,6 +61,15 @@ function StatusScreen() {
     </SafeAreaView>
   );
 }
+function ConnectionMessage({ message }) {
+  return (
+    <View style={styles.errorBox}>
+      <Text style={styles.errorTitle}>API indisponível</Text>
+      <Text style={styles.errorText}>{message}</Text>
+      <Text style={styles.errorHint}>URL: {API_URL}</Text>
+    </View>
+  );
+}
 function Metric({ label, value }) {
   return (
     <View style={styles.metric}>
@@ -51,26 +80,37 @@ function Metric({ label, value }) {
 }
 function IrrigationScreen() {
   const [active, setActive] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    requestApi('/status')
+      .then((status) => setActive(status.irrigation.active))
+      .catch((requestError) => setError(requestError.message));
+  }, []);
   const toggle = async () => {
     const action = active ? 'off' : 'on';
-    setActive(!active);
+    const previous = active;
+    setPending(true);
     try {
-      await fetch(`${API_URL}/irrigation`, {
+      const result = await requestApi('/irrigation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
+      setActive(result.irrigation.active);
+      setError('');
     } catch {
-      Alert.alert(
-        'Modo demonstração',
-        'API não conectada; o controle foi atualizado localmente.',
-      );
+      setActive(previous);
+      setError('Falha ao enviar o comando de irrigação.');
+      Alert.alert('API indisponível', 'O comando não foi enviado.');
+    } finally {
+      setPending(false);
     }
   };
   return (
     <SafeAreaView style={styles.screen}>
       <Text style={styles.kicker}>CONTROLE REMOTO</Text>
       <Text style={styles.title}>Irrigação</Text>
+      {error ? <ConnectionMessage message={error} /> : null}
       <View style={styles.water}>
         <Text style={styles.waterIcon}>◆</Text>
         <Text style={styles.heroLabel}>
@@ -80,27 +120,87 @@ function IrrigationScreen() {
       <Pressable
         style={[styles.button, active && styles.buttonStop]}
         onPress={toggle}
+        disabled={pending}
       >
         <Text style={styles.buttonText}>
-          {active ? 'Desligar irrigação' : 'Ligar irrigação'}
+          {pending
+            ? 'Enviando comando...'
+            : active
+              ? 'Desligar irrigação'
+              : 'Ligar irrigação'}
         </Text>
       </Pressable>
     </SafeAreaView>
   );
 }
 function HarvestScreen() {
+  const [harvests, setHarvests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [reservingId, setReservingId] = useState(null);
+
+  const loadHarvests = () => {
+    setLoading(true);
+    requestApi('/harvest')
+      .then((nextHarvests) => {
+        setHarvests(nextHarvests);
+        setError('');
+      })
+      .catch((requestError) => setError(requestError.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadHarvests();
+  }, []);
+
+  const reserve = async (harvest) => {
+    setReservingId(harvest.id);
+    try {
+      const reserved = await requestApi(`/harvest/${harvest.id}/reserve`, {
+        method: 'PUT',
+        body: JSON.stringify({ reservedBy: 'Morador' }),
+      });
+      setHarvests((current) =>
+        current.map((item) => (item.id === reserved.id ? reserved : item)),
+      );
+      setError('');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setReservingId(null);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.screen}>
       <Text style={styles.kicker}>DISTRIBUIÇÃO</Text>
       <Text style={styles.title}>Próximas colheitas</Text>
-      {[
-        'Alface crespa · Hoje, 16:00',
-        'Cebolinha · Amanhã, 08:30',
-        'Tomate cereja · 28 set',
-      ].map((item) => (
-        <View style={styles.harvest} key={item}>
-          <Text style={styles.harvestTitle}>{item}</Text>
-          <Text style={styles.harvestStatus}>Disponível para retirada</Text>
+      {error ? <ConnectionMessage message={error} /> : null}
+      {loading ? (
+        <Text style={styles.muted}>Carregando colheitas...</Text>
+      ) : null}
+      {harvests.map((harvest) => (
+        <View style={styles.harvest} key={harvest.id}>
+          <Text style={styles.harvestTitle}>{harvest.crop}</Text>
+          <Text style={styles.harvestMeta}>
+            {new Date(harvest.harvestDate).toLocaleString('pt-BR')} ·{' '}
+            {harvest.quantity || 'Quantidade a definir'}
+          </Text>
+          <Text style={styles.harvestStatus}>
+            {harvest.available ? 'Disponível para retirada' : 'Reservada'}
+          </Text>
+          {harvest.available ? (
+            <Pressable
+              style={styles.reserveButton}
+              onPress={() => reserve(harvest)}
+              disabled={reservingId === harvest.id}
+            >
+              <Text style={styles.reserveButtonText}>
+                {reservingId === harvest.id ? 'Reservando...' : 'Reservar'}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ))}
     </SafeAreaView>
@@ -172,4 +272,25 @@ const styles = StyleSheet.create({
   },
   harvestTitle: { color: '#425548', fontSize: 15, fontWeight: '600' },
   harvestStatus: { color: '#57925c', fontSize: 12, marginTop: 7 },
+  harvestMeta: { color: '#89958d', fontSize: 12, marginTop: 7 },
+  reserveButton: {
+    marginTop: 12,
+    padding: 11,
+    borderRadius: 8,
+    backgroundColor: '#edf5eb',
+    alignItems: 'center',
+  },
+  reserveButtonText: { color: '#3f7a4b', fontWeight: '700' },
+  muted: { color: '#89958d', fontSize: 14, marginBottom: 12 },
+  errorBox: {
+    backgroundColor: '#fff1ed',
+    borderColor: '#f2c9bd',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  errorTitle: { color: '#8a493d', fontWeight: '700', fontSize: 13 },
+  errorText: { color: '#a56b5d', fontSize: 12, marginTop: 4 },
+  errorHint: { color: '#b98273', fontSize: 10, marginTop: 7 },
 });
