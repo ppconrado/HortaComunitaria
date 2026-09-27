@@ -520,14 +520,16 @@ function App() {
                 value={newCrop}
                 onChange={(event) => setNewCrop(event.target.value)}
                 placeholder="Ex.: Manjericão"
+                required
               />
             </label>
             <label>
               Data e horário
               <input
+                type="datetime-local"
                 value={newDate}
                 onChange={(event) => setNewDate(event.target.value)}
-                placeholder="Ex.: 30 set, 09:00"
+                required
               />
             </label>
             <button className="primary-button" type="submit">
