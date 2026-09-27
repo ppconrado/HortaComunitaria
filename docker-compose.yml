@@ -6,17 +6,46 @@ services:
       PORT: 3000
       MONGO_URI: mongodb://mongo:27017/horta-comunitaria
       MQTT_BROKER: mqtt://mosquitto:1883
-    depends_on: [mongo, mosquitto]
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   mongo:
     image: mongo:7
     volumes: [mongo_data:/data/db]
+    healthcheck:
+      test:
+        ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   mosquitto:
     image: eclipse-mosquitto:2
     ports: ['1883:1883']
     volumes: [./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf]
+    healthcheck:
+      test:
+        ['CMD', 'mosquitto_pub', '-h', 'localhost', '-t', 'healthcheck', '-n']
+      interval: 5s
+      timeout: 3s
+      retries: 10
   web:
     build: .
     ports: ['8080:80']
-    depends_on: [backend]
+    depends_on:
+      backend:
+        condition: service_healthy
 volumes:
   mongo_data:
