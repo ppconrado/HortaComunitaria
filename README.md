@@ -121,6 +121,44 @@ Tópicos MQTT:
 - `horta/telemetry`: telemetria do ESP32.
 - `horta/irrigation`: comandos `on` e `off` para o relé.
 
+## Para gerar dados de telemetria para testar o aplicativo, sem a existeência do hardware e sensores fisicos:
+
+```
+backend/
+src/
+index.ts # servidor principal
+
+simulators/
+simulator.ts # script de telemetria
+```
+
+```
+npm run simulator no terminal da pasta backend
+```
+
+```
+{
+"soilMoisture": 45,
+"temperature": 26,
+"humidity": 70,
+"timestamp": "2026-09-27T20:45:00Z"
+}
+```
+
+```
+
+✅ Resultado esperado
+
+O script começa a publicar telemetria simulada em horta/telemetry.
+
+O backend grava no MongoDB.
+
+O painel web exibe gráficos com os dados.
+
+O simulador também publica comandos on/off em horta/irrigation quando os limites são atingidos, acionando a irrigação automática.
+
+```
+
 ## Próximas evoluções
 
 Estas funcionalidades fazem parte do roadmap e ainda não devem ser apresentadas como concluídas:

@@ -4,13 +4,17 @@
     "type": "module",
     "scripts": {
         "dev": "node --watch src/index.js",
-        "start": "node src/index.js"
+        "start": "node src/index.js",
+        "simulator": "node --loader ts-node/esm src/simulators/simulator.ts"
     },
     "dependencies": {
+        "@types/node": "^26.6.3",
         "cors": "^2.8.5",
         "dotenv": "^16.4.7",
         "express": "^4.21.2",
-        "mqtt": "^5.10.3",
-        "mongoose": "^8.18.0"
+        "mongoose": "^8.18.0",
+        "mqtt": "^5.16.0",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.9.3"
     }
 }
