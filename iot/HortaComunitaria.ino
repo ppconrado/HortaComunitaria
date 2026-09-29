@@ -51,12 +51,40 @@ void publishTelemetry() {
   float temperature = dht.readTemperature();
   int soilRaw = analogRead(SOIL_PIN);
   int soilMoisture = constrain(map(soilRaw, 4095, 1200, 0, 100), 0, 100);
-  if (!manualOverride) setIrrigation(soilMoisture < SOIL_DRY_THRESHOLD);
+
+  // Regras de irrigação automática
+  if (!manualOverride) {
+    if (soilMoisture < SOIL_DRY_THRESHOLD) {
+      setIrrigation(true);
+      mqttClient.publish(IRRIGATION_TOPIC, "{\"command\":\"on\"}");
+    } else if (soilMoisture > 80) { // limite superior
+      setIrrigation(false);
+      mqttClient.publish(IRRIGATION_TOPIC, "{\"command\":\"off\"}");
+    }
+  }
+
+  // Monta JSON com timestamp
   String payload = "{\"soilMoisture\":" + String(soilMoisture) +
     ",\"temperature\":" + String(temperature, 1) +
-    ",\"humidity\":" + String(humidity, 1) + "}";
+    ",\"humidity\":" + String(humidity, 1) +
+    ",\"timestamp\":\"" + String(millis()) + "\"}";
+
   mqttClient.publish(TELEMETRY_TOPIC, payload.c_str());
+  Serial.println("Telemetria enviada: " + payload);
 }
+
+
+// void publishTelemetry() {
+//   float humidity = dht.readHumidity();
+//   float temperature = dht.readTemperature();
+//   int soilRaw = analogRead(SOIL_PIN);
+//   int soilMoisture = constrain(map(soilRaw, 4095, 1200, 0, 100), 0, 100);
+//   if (!manualOverride) setIrrigation(soilMoisture < SOIL_DRY_THRESHOLD);
+//   String payload = "{\"soilMoisture\":" + String(soilMoisture) +
+//     ",\"temperature\":" + String(temperature, 1) +
+//     ",\"humidity\":" + String(humidity, 1) + "}";
+//   mqttClient.publish(TELEMETRY_TOPIC, payload.c_str());
+// }
 
 void setup() {
   Serial.begin(115200);
