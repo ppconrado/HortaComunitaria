@@ -1,0 +1,4 @@
+WiFi
+PubSubClient
+DHT sensor library
+ArduinoJson

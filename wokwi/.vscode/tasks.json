@@ -1,0 +1,20 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Rodar Wokwi CLI",
+            "type": "shell",
+            "command": "wokwi-cli .",
+            "options": {
+                "env": {
+                    "WOKWI_CLI_TOKEN": "wok_YWPtWn7WvW3nLSlVxC9ySJp3vVoTDgqT0aeae9bf"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}
