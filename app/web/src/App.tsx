@@ -1,4 +1,27 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  Bell,
+  CalendarDays,
+  ChevronDown,
+  Droplets,
+  History,
+  LayoutDashboard,
+  Play,
+  Plus,
+  Sprout,
+  Square,
+  TriangleAlert,
+} from 'lucide-react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceArea,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { io } from 'socket.io-client';
 import './App.css';
 
@@ -54,20 +77,12 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-function buildChartPoints(history: Telemetry[]) {
-  if (history.length < 2) return '0,115 720,115';
-  const values = history.map((item) => item.soilMoisture);
-  const maximum = Math.max(...values, 80);
-  const minimum = Math.min(...values, 0);
-  const range = Math.max(maximum - minimum, 1);
-  return history
-    .map((item, index) => {
-      const x = (index / (history.length - 1)) * 720;
-      const y = 210 - ((item.soilMoisture - minimum) / range) * 180;
-      return `${x},${y}`;
-    })
-    .join(' ');
-}
+const navigationItems = [
+  { label: 'Visão geral', Icon: LayoutDashboard },
+  { label: 'Irrigação', Icon: Droplets },
+  { label: 'Colheitas', Icon: Sprout },
+  { label: 'Histórico', Icon: History },
+];
 
 function App() {
   const [activeSection, setActiveSection] = useState('Visão geral');
@@ -100,7 +115,13 @@ function App() {
         rangeHours * 60 * 60 * 1000,
     )
     .slice(-24);
-  const chartPoints = buildChartPoints(chartHistory);
+  const chartData = chartHistory.map((item) => ({
+    ...item,
+    label: new Date(item.timestamp).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  }));
   const filteredHarvests = harvests.filter(
     (harvest) => harvestFilter === 'all' || harvest.available,
   );
@@ -274,7 +295,9 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">+</span>
+          <span className="brand-mark">
+            <Plus size={18} strokeWidth={2.2} />
+          </span>
           <span>
             Horta
             <br />
@@ -283,23 +306,18 @@ function App() {
         </div>
         <div className="workspace-label">ESPAÇO DE GESTÃO</div>
         <nav aria-label="Navegação principal">
-          {['Visão geral', 'Irrigação', 'Colheitas', 'Histórico'].map(
-            (item, index) => (
+          {navigationItems.map(({ label, Icon }) => (
               <button
-                key={item}
+                key={label}
                 className={
-                  activeSection === item ? 'nav-item active' : 'nav-item'
+                  activeSection === label ? 'nav-item active' : 'nav-item'
                 }
-                onClick={() => setActiveSection(item)}
+                onClick={() => setActiveSection(label)}
               >
-                <span
-                  className={`nav-icon icon-${index}`}
-                  aria-hidden="true"
-                ></span>
-                {item}
+                <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
+                {label}
               </button>
-            ),
-          )}
+            ))}
         </nav>
         <div className="sidebar-footer">
           <span
@@ -328,7 +346,7 @@ function App() {
           </div>
           <div className="top-actions">
             <button className="icon-button" aria-label="Notificações">
-              <span className="bell-icon"></span>
+              <Bell size={17} strokeWidth={1.8} />
               <i></i>
             </button>
             <div className="profile">
@@ -337,7 +355,7 @@ function App() {
                 <strong>José Silva</strong>
                 <small>Voluntário</small>
               </div>
-              <span className="chevron">⌄</span>
+              <ChevronDown size={16} className="chevron" />
             </div>
           </div>
         </header>
@@ -386,14 +404,16 @@ function App() {
                 className="primary-button"
                 onClick={() => setShowForm(true)}
               >
-                <span>+</span> Nova colheita
+                <Plus size={16} strokeWidth={2} /> Nova colheita
               </button>
             )}
           </div>
           <div
             className={`alert-banner ${activeSection === 'Colheitas' || activeSection === 'Histórico' ? 'section-hidden' : ''}`}
           >
-            <span className="alert-icon">!</span>
+            <span className="alert-icon">
+              <TriangleAlert size={14} strokeWidth={2} />
+            </span>
             <div>
               <strong>Atenção necessária</strong>
               <p>O canteiro de tomates está com umidade abaixo do ideal.</p>
@@ -448,7 +468,7 @@ function App() {
             <div className="stat-card">
               <div className="stat-top">
                 <span>PRÓXIMA COLHEITA</span>
-                <span className="calendar-mini">▣</span>
+                <CalendarDays size={18} className="calendar-mini" />
               </div>
               <div className="stat-value date-value">
                 {harvests[0] ? formatDate(harvests[0].harvestDate) : '--'}
@@ -485,59 +505,54 @@ function App() {
                 </select>
               </div>
               <div className="chart">
-                <div className="chart-y">
-                  <span>80%</span>
-                  <span>60%</span>
-                  <span>40%</span>
-                  <span>20%</span>
-                  <span>0%</span>
-                </div>
                 <div className="chart-area">
-                  <div className="grid-lines">
-                    <i></i>
-                    <i></i>
-                    <i></i>
-                    <i></i>
-                    <i></i>
-                  </div>
-                  <svg
-                    viewBox="0 0 720 230"
-                    preserveAspectRatio="none"
-                    role="img"
-                    aria-label="Gráfico de umidade do solo"
-                  >
-                    <defs>
-                      <linearGradient
-                        id="area-fill"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0" stopColor="#7cae7f" stopOpacity=".3" />
-                        <stop offset="1" stopColor="#7cae7f" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      points={chartPoints}
-                      fill="none"
-                      stroke="#3f7a4b"
-                      strokeWidth="3"
-                      strokeLinejoin="round"
-                    />
-                    <polyline
-                      points={`${chartPoints} 720,230 0,230`}
-                      fill="url(#area-fill)"
-                    />
-                  </svg>
-                  <div className="chart-labels">
-                    <span>00:00</span>
-                    <span>04:00</span>
-                    <span>08:00</span>
-                    <span>12:00</span>
-                    <span>16:00</span>
-                    <span>Agora</span>
-                  </div>
+                  <ResponsiveContainer width="100%" height={207}>
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 12, right: 8, bottom: 4, left: 0 }}
+                      role="img"
+                      aria-label="Gráfico de umidade do solo"
+                    >
+                      <CartesianGrid stroke="#e8ede7" strokeDasharray="3 3" />
+                      <ReferenceArea
+                        y1={50}
+                        y2={70}
+                        fill="#7cae7f"
+                        fillOpacity={0.12}
+                      />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fill: '#aab3ac', fontSize: 9 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        ticks={[0, 20, 40, 60, 80, 100]}
+                        tick={{ fill: '#aab3ac', fontSize: 9 }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(value) => `${value}%`}
+                        width={34}
+                      />
+                      <Tooltip
+                        formatter={(value) => [`${value}%`, 'Umidade']}
+                        contentStyle={{
+                          border: '1px solid #e4e9e2',
+                          borderRadius: 6,
+                          fontSize: 11,
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="soilMoisture"
+                        stroke="#3f7a4b"
+                        strokeWidth={3}
+                        dot={false}
+                        activeDot={{ r: 4, fill: '#3f7a4b' }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
               <div className="chart-legend">
@@ -569,7 +584,7 @@ function App() {
                 }
               >
                 <div className="water-circle">
-                  <span className="drop">◆</span>
+                  <Droplets size={28} className="drop" />
                 </div>
                 <div className="ripple ripple-one"></div>
                 <div className="ripple ripple-two"></div>
@@ -585,7 +600,7 @@ function App() {
                 onClick={toggleIrrigation}
                 disabled={irrigationPending || !status}
               >
-                <span>{irrigationOn ? '■' : '▶'}</span>
+                {irrigationOn ? <Square size={12} /> : <Play size={12} />}
                 {irrigationPending
                   ? 'Enviando comando...'
                   : irrigationOn

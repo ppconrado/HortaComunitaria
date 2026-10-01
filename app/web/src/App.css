@@ -480,11 +480,9 @@ nav {
   height: 1px;
   border-top: 1px dashed #e8ede7;
 }
-.chart-area svg {
-  position: absolute;
-  inset: 0 0 24px;
+.chart-area > div {
   width: 100%;
-  height: calc(100% - 24px);
+  height: 100%;
 }
 .chart-labels {
   position: absolute;
