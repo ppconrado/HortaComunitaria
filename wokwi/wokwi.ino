@@ -21,6 +21,7 @@ PubSubClient mqttClient(wifiClient);
 
 unsigned long lastTelemetry = 0;
 bool irrigationOn = false;
+bool manualOverride = false;
 
 void setIrrigation(bool active) {
   digitalWrite(RELAY_PIN, active ? HIGH : LOW);
@@ -55,13 +56,20 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     StaticJsonDocument<128> doc;
     DeserializationError error = deserializeJson(doc, payload, length);
     if (!error) {
-      const char* command = doc["command"];
+      const char* command = doc["command"] | "";
+      const char* mode = doc["mode"] | "manual";
+      if (strcmp(command, "auto") == 0) {
+        manualOverride = false;
+        Serial.println("Irrigação em modo automático");
+        return;
+      }
+      manualOverride = strcmp(mode, "automatic") != 0;
       if (strcmp(command, "on") == 0) {
         setIrrigation(true);
-        Serial.println("💧 Irrigação ligada por comando manual");
+        Serial.println(manualOverride ? "Irrigação ligada manualmente" : "Irrigação ligada automaticamente");
       } else if (strcmp(command, "off") == 0) {
         setIrrigation(false);
-        Serial.println("💧 Irrigação desligada por comando manual");
+        Serial.println(manualOverride ? "Irrigação desligada manualmente" : "Irrigação desligada automaticamente");
       }
     } else {
       Serial.println("Erro ao interpretar comando MQTT");
@@ -77,17 +85,19 @@ void publishTelemetry() {
   int soilMoisture = map(soilRaw, 0, 4095, 100, 0);
 
   // Histerese: liga abaixo de 40%, desliga acima de 60%
-  if (soilMoisture < 40 && !irrigationOn) {
+  if (!manualOverride && soilMoisture < 40 && !irrigationOn) {
     setIrrigation(true);
-    mqttClient.publish(IRRIGATION_TOPIC, "{\"command\":\"on\"}");
-  } else if (soilMoisture > 60 && irrigationOn) {
+    mqttClient.publish(IRRIGATION_TOPIC, "{\"command\":\"on\",\"mode\":\"automatic\"}");
+  } else if (!manualOverride && soilMoisture > 60 && irrigationOn) {
     setIrrigation(false);
-    mqttClient.publish(IRRIGATION_TOPIC, "{\"command\":\"off\"}");
+    mqttClient.publish(IRRIGATION_TOPIC, "{\"command\":\"off\",\"mode\":\"automatic\"}");
   }
 
   String payload = "{\"soilMoisture\":" + String(soilMoisture) +
                    ",\"temperature\":" + String(temperature, 1) +
-                   ",\"humidity\":" + String(humidity, 1) + "}";
+                   ",\"humidity\":" + String(humidity, 1) +
+                   ",\"irrigationOn\":" + (irrigationOn ? "true" : "false") +
+                   ",\"mode\":\"" + (manualOverride ? "manual" : "automatic") + "\"}";
 
   mqttClient.publish(TELEMETRY_TOPIC, payload.c_str());
   Serial.println("Telemetria enviada: " + payload);

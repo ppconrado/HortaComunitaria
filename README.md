@@ -86,6 +86,12 @@ docker compose up --build
 - MongoDB: porta `27017` na rede Docker
 - Mosquitto: `localhost:1883`
 
+Essa é a configuração padrão e não carrega automaticamente a configuração de hardware. Para usar o ESP32 físico com a configuração alternativa, execute explicitamente:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hardware.yml up --build
+```
+
 Para validar a infraestrutura completa, confirme a saúde dos serviços:
 
 ```bash
@@ -119,7 +125,7 @@ MONGO_URI=mongodb://localhost:27017/horta-comunitaria
 Tópicos MQTT:
 
 - `horta/telemetry`: telemetria do ESP32.
-- `horta/irrigation`: comandos `on` e `off` para o relé.
+- `horta/irrigation`: comandos `on`, `off` e `auto`, com `mode` `manual` ou `automatic`, para controlar o relé e liberar o modo automático.
 
 ## Para gerar dados de telemetria para testar o aplicativo, sem a existeência do hardware e sensores fisicos:
 
@@ -145,7 +151,7 @@ npm run simulator no terminal da pasta backend
 }
 ```
 
-```
+````
 
 ✅ Resultado esperado
 
@@ -156,6 +162,14 @@ O backend grava no MongoDB.
 O painel web exibe gráficos com os dados.
 
 O simulador também publica comandos on/off em horta/irrigation quando os limites são atingidos, acionando a irrigação automática.
+
+Para recompilar o firmware Wokwi a partir da raiz do projeto no Windows:
+
+```powershell
+npm run compile:wokwi
+````
+
+O script procura primeiro `wokwi/arduino-cli.exe` e depois um `arduino-cli` instalado no PATH. O firmware gerado é salvo em `wokwi/build`, conforme configurado no `wokwi/wokwi.toml`.
 
 ```
 
@@ -295,3 +309,4 @@ A primeira entrega funcional deve ser: **telemetria real aparecendo no web e com
 ## Documentação técnica
 
 A visão das integrações entre sensor, MQTT, backend, banco, web, mobile e atuador está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+```

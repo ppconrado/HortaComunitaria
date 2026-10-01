@@ -625,6 +625,14 @@ nav {
   font-size: 10px;
   font-weight: bold;
 }
+.automatic-button {
+  align-self: center;
+  margin-top: 12px;
+}
+.automatic-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
 .harvest-list {
   margin-top: 18px;
 }

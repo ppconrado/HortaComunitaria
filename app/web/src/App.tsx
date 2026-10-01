@@ -16,6 +16,8 @@ type Telemetry = {
   temperature: number;
   humidity: number;
   timestamp: string;
+  irrigationOn?: boolean;
+  mode?: 'manual' | 'automatic';
 };
 
 type Status = Telemetry & {
@@ -101,11 +103,14 @@ function App() {
     (harvest) => harvestFilter === 'all' || harvest.available,
   );
   const apiOnline = Boolean(status) && !requestError;
-  const statusLabel = useMemo(
-    () =>
-      irrigationOn ? 'Irrigação manual ativa' : 'Operação automática ativa',
-    [irrigationOn],
-  );
+  const statusLabel = useMemo(() => {
+    if (status?.irrigation.mode === 'manual') {
+      return irrigationOn
+        ? 'Irrigação manual ativa'
+        : 'Irrigação manual desligada';
+    }
+    return 'Operação automática ativa';
+  }, [irrigationOn, status?.irrigation.mode]);
 
   async function loadDashboard() {
     try {
@@ -134,18 +139,23 @@ function App() {
       void loadDashboard();
     }, 0);
     const refreshTimer = window.setInterval(() => {
-      requestApi<Status>('/status')
-        .then(setStatus)
-        .then(() => {
+      Promise.all([
+        requestApi<Status>('/status'),
+        requestApi<Telemetry[]>('/telemetry/history'),
+      ])
+        .then(([nextStatus, nextHistory]) => {
+          setStatus(nextStatus);
+          setHistory(nextHistory);
           setLastSyncedAt(new Date().toISOString());
           setCurrentTime(Date.now());
+          setRequestError('');
         })
         .catch((error: unknown) =>
           setRequestError(
             error instanceof Error ? error.message : 'API indisponível.',
           ),
         );
-    }, 10000);
+    }, 5000);
     return () => {
       window.clearTimeout(initialLoadTimer);
       window.clearInterval(refreshTimer);
@@ -171,6 +181,29 @@ function App() {
         error instanceof Error
           ? error.message
           : 'Falha ao controlar irrigação.',
+      );
+    } finally {
+      setIrrigationPending(false);
+    }
+  }
+
+  async function resumeAutomatic() {
+    setIrrigationPending(true);
+    try {
+      const nextStatus = await requestApi<{ irrigation: Status['irrigation'] }>(
+        '/irrigation',
+        {
+          method: 'POST',
+          body: JSON.stringify({ action: 'auto' }),
+        },
+      );
+      setStatus((current) =>
+        current ? { ...current, irrigation: nextStatus.irrigation } : current,
+      );
+      setRequestError('');
+    } catch (error) {
+      setRequestError(
+        error instanceof Error ? error.message : 'Falha ao retomar automático.',
       );
     } finally {
       setIrrigationPending(false);
@@ -542,6 +575,15 @@ function App() {
                     ? 'Desligar irrigação'
                     : 'Ligar irrigação'}
               </button>
+              {status?.irrigation.mode === 'manual' && (
+                <button
+                  className="text-button automatic-button"
+                  onClick={resumeAutomatic}
+                  disabled={irrigationPending}
+                >
+                  Retomar modo automático
+                </button>
+              )}
             </section>
           </div>
           <section

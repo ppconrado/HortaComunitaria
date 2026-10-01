@@ -22,4 +22,6 @@ flowchart LR
 ## Tópicos MQTT
 
 - `horta/telemetry`: `{ "soilMoisture": 42, "temperature": 26.0, "humidity": 68.0 }`
-- `horta/irrigation`: `{ "command": "on" }` ou `{ "command": "off" }`
+- `horta/irrigation`: comandos `{ "command": "on", "mode": "manual" }`, `{ "command": "off", "mode": "manual" }` ou `{ "command": "auto", "mode": "automatic" }`.
+
+Comandos manuais ativam o override no ESP32. O comando `auto` libera o override e devolve a decisão ao limiar de umidade com histerese: liga abaixo de 40% e desliga acima de 60%.

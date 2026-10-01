@@ -73,25 +73,35 @@ app.get('/telemetry/history', (_request, response) =>
 );
 app.post('/irrigation', (request, response) => {
   const { action, mode = 'manual' } = request.body;
-  if (!['on', 'off'].includes(action))
+  if (!['on', 'off', 'auto'].includes(action))
     return response
       .status(400)
-      .json({ error: 'Ação inválida. Use on ou off.' });
-  irrigation = {
-    active: action === 'on',
-    mode,
-    updatedAt: new Date().toISOString(),
-  };
+      .json({ error: 'Ação inválida. Use on, off ou auto.' });
+  const automatic = action === 'auto';
+  irrigation = automatic
+    ? { ...irrigation, mode: 'automatic', updatedAt: new Date().toISOString() }
+    : {
+        active: action === 'on',
+        mode,
+        updatedAt: new Date().toISOString(),
+      };
   const client = app.locals.mqtt;
   if (client) {
     const topic = process.env.MQTT_IRRIGATION_TOPIC || 'horta/irrigation';
-    client.publish(topic, JSON.stringify({ command: action }), (error) => {
-      if (error)
-        return response
-          .status(502)
-          .json({ error: 'Falha ao publicar no MQTT' });
-      response.json({ message: `Irrigação ${action}`, irrigation });
-    });
+    client.publish(
+      topic,
+      JSON.stringify({
+        command: automatic ? 'auto' : action,
+        mode: automatic ? 'automatic' : mode,
+      }),
+      (error) => {
+        if (error)
+          return response
+            .status(502)
+            .json({ error: 'Falha ao publicar no MQTT' });
+        response.json({ message: `Irrigação ${action}`, irrigation });
+      },
+    );
     return;
   }
   response.json({ message: `Irrigação ${action}`, irrigation });
@@ -178,15 +188,46 @@ async function connectIntegrations() {
     });
     client.on('connect', () => {
       console.log('MQTT conectado');
-      client.subscribe(process.env.MQTT_TELEMETRY_TOPIC || 'horta/telemetry');
+      client.subscribe([
+        process.env.MQTT_TELEMETRY_TOPIC || 'horta/telemetry',
+        process.env.MQTT_IRRIGATION_TOPIC || 'horta/irrigation',
+      ]);
     });
-    client.on('message', (_topic, message) => {
+    client.on('message', (topic, message) => {
       try {
         const data = JSON.parse(message.toString());
+        const irrigationTopic =
+          process.env.MQTT_IRRIGATION_TOPIC || 'horta/irrigation';
+        if (topic === irrigationTopic) {
+          if (['on', 'off'].includes(data.command)) {
+            irrigation = {
+              active: data.command === 'on',
+              mode: data.mode || 'automatic',
+              updatedAt: new Date().toISOString(),
+            };
+          } else if (data.command === 'auto') {
+            irrigation = {
+              ...irrigation,
+              mode: 'automatic',
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return;
+        }
         latestTelemetry = {
           ...data,
           timestamp: data.timestamp || new Date().toISOString(),
         };
+        if (
+          typeof data.irrigationOn === 'boolean' &&
+          ['manual', 'automatic'].includes(data.mode)
+        ) {
+          irrigation = {
+            active: data.irrigationOn,
+            mode: data.mode,
+            updatedAt: latestTelemetry.timestamp,
+          };
+        }
         telemetryHistory.push(latestTelemetry);
         if (mongoose.connection.readyState === 1) {
           Telemetry.create(latestTelemetry).catch(() =>

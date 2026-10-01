@@ -5,6 +5,7 @@
         "dev": "npm --prefix app/web run dev",
         "build": "npm --prefix app/web run build",
         "lint": "npm --prefix app/web run lint",
-        "preview": "npm --prefix app/web run preview"
+        "preview": "npm --prefix app/web run preview",
+        "compile:wokwi": "powershell -ExecutionPolicy Bypass -File wokwi/compile.ps1"
     }
 }
