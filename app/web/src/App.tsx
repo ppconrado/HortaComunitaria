@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { io } from 'socket.io-client';
 import './App.css';
 
 type Harvest = {
@@ -79,6 +80,7 @@ function App() {
   const [historyRange, setHistoryRange] = useState('24');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [socketConnected, setSocketConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [requestError, setRequestError] = useState('');
   const [irrigationPending, setIrrigationPending] = useState(false);
@@ -138,27 +140,36 @@ function App() {
     const initialLoadTimer = window.setTimeout(() => {
       void loadDashboard();
     }, 0);
-    const refreshTimer = window.setInterval(() => {
-      Promise.all([
-        requestApi<Status>('/status'),
-        requestApi<Telemetry[]>('/telemetry/history'),
-      ])
-        .then(([nextStatus, nextHistory]) => {
-          setStatus(nextStatus);
-          setHistory(nextHistory);
-          setLastSyncedAt(new Date().toISOString());
-          setCurrentTime(Date.now());
-          setRequestError('');
-        })
-        .catch((error: unknown) =>
-          setRequestError(
-            error instanceof Error ? error.message : 'API indisponível.',
-          ),
+    const socket = io(API_URL, { transports: ['websocket', 'polling'] });
+    const handleStatusUpdate = (nextStatus: Status) => {
+      setStatus(nextStatus);
+      setLastSyncedAt(new Date().toISOString());
+      setCurrentTime(Date.now());
+      setRequestError('');
+    };
+    const handleTelemetryUpdate = (telemetry: Telemetry) => {
+      setHistory((current) => {
+        const withoutDuplicate = current.filter(
+          (item) => item.timestamp !== telemetry.timestamp,
         );
-    }, 5000);
+        return [telemetry, ...withoutDuplicate].slice(0, 100);
+      });
+    };
+    socket.on('connect', () => {
+      setSocketConnected(true);
+      setRequestError('');
+    });
+    socket.on('disconnect', () => setSocketConnected(false));
+    socket.on('connect_error', () => {
+      setSocketConnected(false);
+      setRequestError('Conexão realtime indisponível.');
+    });
+    socket.on('status:update', handleStatusUpdate);
+    socket.on('telemetry:update', handleTelemetryUpdate);
     return () => {
       window.clearTimeout(initialLoadTimer);
-      window.clearInterval(refreshTimer);
+      socket.removeAllListeners();
+      socket.disconnect();
     };
   }, []);
 
@@ -292,10 +303,16 @@ function App() {
         </nav>
         <div className="sidebar-footer">
           <span
-            className={apiOnline ? 'online-dot' : 'online-dot offline'}
+            className={
+              apiOnline && socketConnected ? 'online-dot' : 'online-dot offline'
+            }
           ></span>
           <div>
-            <strong>{apiOnline ? 'Sistema online' : 'API desconectada'}</strong>
+            <strong>
+              {apiOnline && socketConnected
+                ? 'Sistema online'
+                : 'Realtime desconectado'}
+            </strong>
             <small>
               {lastSyncedAt
                 ? `Sincronizado às ${new Date(lastSyncedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
