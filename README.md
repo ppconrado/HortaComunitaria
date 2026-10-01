@@ -1,45 +1,118 @@
 # Horta Comunitária
 
-MVP do projeto integrador HortaUrbana: uma plataforma para monitorar hortas comunitárias, controlar a irrigação com apoio de IoT e organizar a distribuição das colheitas.
+Projeto de monitoramento e automação de uma horta comunitária com sensores IoT, API backend, painel web e app mobile.
 
-## Estado atual
+## Visão geral
 
-O repositório já contém as três camadas previstas:
+O sistema atual implementa o fluxo principal:
 
-- **IoT:** firmware Arduino para ESP32 com sensor de umidade do solo, DHT22, relé, MQTT e irrigação automática por limiar de 40%, com override manual.
-- **Backend:** API Express com status, histórico de telemetria, irrigação, calendário e reserva de colheitas. Telemetria, colheitas e reservas são persistidas no MongoDB quando a infraestrutura está disponível; sem MongoDB, a API opera com dados de demonstração em memória.
-- **Aplicação:** painel administrativo web em React + TypeScript e aplicativo mobile Expo para status, irrigação e colheitas.
+- ESP32/Wokwi coleta umidade do solo, temperatura e umidade relativa do ar.
+- Os dados são publicados em MQTT no tópico `horta/telemetry`.
+- O backend Express recebe a telemetria, expõe a API REST e emite eventos em tempo real via Socket.IO.
+- O painel web e o app mobile consomem o mesmo estado da horta e permitem controlar a irrigação.
+- A irrigação pode ser acionada manualmente ou devolvida ao modo automático.
 
-O painel web permite visualizar indicadores, consultar a umidade, ligar/desligar a irrigação em modo demo e cadastrar colheitas. A API publica comandos MQTT quando existe um broker configurado e grava telemetria no MongoDB quando a conexão está disponível.
+A implementação está direcionada para demonstração funcional e validação do fluxo operacional real, e não para autenticação/usuários ainda.
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+  sensor[ESP32 / Wokwi] -->|horta/telemetry| mqtt[Broker MQTT]
+  mqtt --> backend[Backend Express]
+  backend --> web[Painel React]
+  backend --> mobile[App Expo]
+  web -->|POST /irrigation| backend
+  mobile -->|POST /irrigation| backend
+  backend -->|horta/irrigation| mqtt
+  backend --> mongo[(MongoDB, quando disponível)]
+```
+
+## Funcionalidades implementadas
+
+### Backend
+
+O backend em `backend/src/index.js` implementa:
+
+- `GET /health`: health check do serviço.
+- `GET /status`: retorna o último estado da horta com telemetria e irrigação.
+- `GET /telemetry/history`: histórico recente de telemetria.
+- `POST /irrigation`: aceita `on`, `off` e `auto`.
+- `GET /harvest`: lista colheitas disponíveis.
+- `POST /harvest`: cria nova colheita.
+- `PUT /harvest/:id/reserve`: reserva uma colheita.
+
+O servidor também:
+
+- recebe mensagens MQTT em `horta/telemetry` e `horta/irrigation`;
+- atualiza o estado em memória em tempo real;
+- emite eventos `status:update` e `telemetry:update` por Socket.IO;
+- salva telemetria no MongoDB quando `MONGO_URI` está disponível;
+- usa fallback em memória quando o banco não está acessível.
+
+### Painel web
+
+O frontend em `app/web/src/App.tsx` implementa:
+
+- dashboard de status geral;
+- gráfico de umidade/temperatura/umidade relativa;
+- controle manual de irrigação (`on`, `off` e `auto`);
+- histórico recente de telemetria;
+- cadastro e reserva de colheitas;
+- atualização em tempo real via Socket.IO.
+
+A URL da API é configurada por `VITE_API_URL` e usa `http://localhost:3000` como padrão.
+
+### App mobile
+
+O app em `app/mobile` usa Expo + React Native e contém as telas:
+
+- `Status`
+- `Irrigação`
+- `Colheitas`
+
+As telas usam a mesma API e os mesmos conceitos do painel web, com botões para ligar/desligar a irrigação e registrar reservas de colheitas.
+
+### IoT / firmware
+
+A pasta `iot/` contém o firmware de referência para ESP32 em Arduino/C++.
+
+Ele:
+
+- lê DHT22 e sensor de solo;
+- publica telemetria em `horta/telemetry`;
+- escuta comandos em `horta/irrigation`;
+- usa lógica de irrigação automática baseada em limiar de umidade do solo;
+- aceita override manual via comando MQTT.
+
+O código do firmware define a estrutura básica do fluxo de integração, e o backend aceita o mesmo conjunto de comandos e payloads esperados pela camada IoT.
 
 ## Estrutura do repositório
 
 ```text
-app/web/       React + TypeScript, painel administrativo
-app/mobile/    React Native + Expo, aplicativo para moradores/voluntários
-backend/       Express, MQTT, MongoDB e API REST
-iot/           Firmware ESP32 em Arduino/C++
-docs/          Arquitetura e contratos de integração
-mosquitto/     Configuração local do broker MQTT
+backend/          API REST + MQTT + Socket.IO
+app/web/          painel web em React + TypeScript
+app/mobile/       app Expo para Android/iOS
+iot/              firmware ESP32/Wokwi
+docs/             arquitetura e documentação de apoio
+mosquitto/        configuração do broker MQTT
+wokwi/            artefatos e scripts de compilação do Wokwi
+Dockerfile        imagem do painel web
+backend/Dockerfile imagem do backend
+docker-compose.yml stack principal do projeto
 ```
 
-## Executar o painel web
+## Requisitos
 
-```bash
-npm --prefix app/web install
-npm run dev
-```
+- Node.js 18+
+- npm
+- Docker Desktop (opcional, para execução em container)
+- broker MQTT acessível localmente ou via rede
+- MongoDB opcional, mas recomendado para persistência
 
-Abra `http://localhost:5173`.
+## Como executar localmente
 
-Para gerar e visualizar o build de produção:
-
-```bash
-npm --prefix app/web run build
-npm --prefix app/web run preview
-```
-
-## Executar a API
+### 1) Backend
 
 ```bash
 cd backend
@@ -48,87 +121,7 @@ copy .env.example .env
 npm run dev
 ```
 
-Principais endpoints:
-
-- `GET /health`
-- `GET /status`
-- `GET /telemetry/history`
-- `POST /irrigation` com `{ "action": "on" }` ou `{ "action": "off" }`
-- `GET /harvest`
-- `POST /harvest`
-- `PUT /harvest/:id/reserve`
-
-## Executar o aplicativo mobile
-
-Na pasta `app/mobile`, copie `.env.example` para `.env` e ajuste o IP para o endereço IPv4 desta máquina na rede local:
-
-```bash
-cd app/mobile
-copy .env.example .env
-npm install
-npm start
-```
-
-O celular e o computador precisam estar na mesma rede Wi-Fi. Não use `localhost` no celular: nesse caso, `localhost` aponta para o próprio aparelho. Para Android Emulator, use `http://10.0.2.2:3000`; para um celular físico, use o IP local da máquina.
-
-O mobile segue uma arquitetura separada por responsabilidade:
-
-```text
-app/mobile/
-├── App.tsx
-└── src/
-  ├── components/    # background, métricas, conexão e irrigação
-  ├── hooks/         # estado realtime compartilhado
-  ├── screens/       # status, irrigação e colheitas
-  ├── services/      # API REST e Socket.IO
-  ├── styles/        # tema visual da horta
-  └── types/         # contratos de telemetria, irrigação e colheitas
-```
-
-A tela de irrigação usa o mesmo contrato do web: `on` e `off` ativam o controle manual, e `auto` libera novamente a automação do ESP32. O estado recebido por Socket.IO atualiza a tela sem refresh.
-
-Se o Expo informar que a conexão de dados não é permitida, feche sessões antigas do Expo, execute `npm start` novamente e abra o QR Code da sessão LAN atual. Caso a porta `8081` esteja ocupada, aceite a próxima porta sugerida pelo Expo. Desative temporariamente VPN, dados móveis e isolamento de rede da rede Wi-Fi durante o teste.
-
-## Executar as três camadas com Docker
-
-Com Docker Desktop instalado:
-
-```bash
-docker compose up --build
-```
-
-- Painel web: `http://localhost:8080`
-- API: `http://localhost:3000`
-- MongoDB: porta `27017` na rede Docker
-- Mosquitto: `localhost:1883`
-
-Essa é a configuração padrão e não carrega automaticamente a configuração de hardware. Para usar o ESP32 físico com a configuração alternativa, execute explicitamente:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.hardware.yml up --build
-```
-
-Para validar a infraestrutura completa, confirme a saúde dos serviços:
-
-```bash
-docker compose ps
-curl http://localhost:3000/health
-curl http://localhost:3000/status
-```
-
-O fluxo MQTT pode ser testado publicando uma telemetria diretamente no broker:
-
-```bash
-docker compose exec -T mosquitto mosquitto_pub \
-  -h localhost -p 1883 -t horta/telemetry \
-  -m '{"soilMoisture":67,"temperature":25.1,"humidity":59.8}'
-```
-
-Depois, consulte `http://localhost:3000/status`. Os valores publicados devem aparecer na resposta da API. O Compose aguarda MongoDB e Mosquitto ficarem saudáveis antes de iniciar o backend, e aguarda o backend antes de iniciar o painel web.
-
-## Configuração MQTT e MongoDB
-
-Copie `backend/.env.example` para `backend/.env` quando executar o backend fora do Docker:
+Arquivo `.env` padrão:
 
 ```env
 PORT=3000
@@ -138,179 +131,160 @@ MQTT_IRRIGATION_TOPIC=horta/irrigation
 MONGO_URI=mongodb://localhost:27017/horta-comunitaria
 ```
 
-Tópicos MQTT:
+Se `MONGO_URI` não estiver disponível, o backend continua operando em modo de demonstração com dados em memória.
 
-- `horta/telemetry`: telemetria do ESP32.
-- `horta/irrigation`: comandos `on`, `off` e `auto`, com `mode` `manual` ou `automatic`, para controlar o relé e liberar o modo automático.
+### 2) Painel web
 
-## Para gerar dados de telemetria para testar o aplicativo, sem a existeência do hardware e sensores fisicos:
-
-```
-backend/
-src/
-index.ts # servidor principal
-
-simulators/
-simulator.ts # script de telemetria
+```bash
+npm --prefix app/web install
+npm --prefix app/web run dev
 ```
 
-```
-npm run simulator no terminal da pasta backend
+Acesse:
+
+```text
+http://localhost:5173
 ```
 
+Para build de produção:
+
+```bash
+npm --prefix app/web run build
+npm --prefix app/web run preview
 ```
+
+### 3) App mobile
+
+```bash
+cd app/mobile
+copy .env.example .env
+npm install
+npx expo start
+```
+
+Arquivo `.env` usado pelo app:
+
+```env
+EXPO_PUBLIC_API_URL=http://192.168.0.51:3000
+```
+
+Importante:
+
+- no celular físico, use o IP da máquina na rede local;
+- não use `localhost` no dispositivo móvel;
+- em emulador Android, `10.0.2.2` costuma funcionar;
+- o celular e o computador devem estar na mesma rede Wi‑Fi.
+
+### 4) Docker Compose
+
+Na raiz do projeto:
+
+```bash
+docker compose up --build -d
+```
+
+Serviços principais:
+
+- API: `http://localhost:3000`
+- Web: `http://localhost:8080`
+- MongoDB: `localhost:27017`
+- Mosquitto: `localhost:1883`
+
+Validação rápida:
+
+```bash
+docker compose ps
+curl http://localhost:3000/health
+curl http://localhost:3000/status
+```
+
+## MQTT e payloads
+
+### Tópico de telemetria
+
+`horta/telemetry`
+
+Exemplo:
+
+```json
 {
-"soilMoisture": 45,
-"temperature": 26,
-"humidity": 70,
-"timestamp": "2026-09-27T20:45:00Z"
+  "soilMoisture": 42,
+  "temperature": 26.4,
+  "humidity": 68.1,
+  "timestamp": "2026-09-28T12:00:00.000Z"
 }
 ```
 
-````
+### Tópico de irrigação
 
-✅ Resultado esperado
+`horta/irrigation`
 
-O script começa a publicar telemetria simulada em horta/telemetry.
+Comandos aceitos:
 
-O backend grava no MongoDB.
+```json
+{ "command": "on", "mode": "manual" }
+{ "command": "off", "mode": "manual" }
+{ "command": "auto", "mode": "automatic" }
+```
 
-O painel web exibe gráficos com os dados.
+A ação `auto` retorna a irrigação ao controle automático, enquanto `on` e `off` fazem override manual.
 
-O simulador também publica comandos on/off em horta/irrigation quando os limites são atingidos, acionando a irrigação automática.
+## Endpoints principais da API
 
-Para recompilar o firmware Wokwi a partir da raiz do projeto no Windows:
+```text
+GET    /health
+GET    /status
+GET    /telemetry/history
+POST   /irrigation
+GET    /harvest
+POST   /harvest
+PUT    /harvest/:id/reserve
+```
+
+Exemplo de comando de irrigação:
+
+```bash
+curl -X POST http://localhost:3000/irrigation \
+  -H "Content-Type: application/json" \
+  -d '{"action":"on","mode":"manual"}'
+```
+
+## Fluxo de funcionamento
+
+1. O sensor publica dados em MQTT.
+2. O backend recebe o payload e atualiza o estado atual.
+3. O backend expõe `/status` e `/telemetry/history`.
+4. O painel web e o mobile renderizam o estado atualizado.
+5. Quando um usuário ativa a irrigação pela interface, a API publica um comando no tópico MQTT e atualiza o estado em tempo real.
+
+## Observações importantes
+
+- O projeto ainda prioriza a camada funcional de IoT e automação sobre autenticação e perfis de usuário.
+- Em ausência de MongoDB, a API funciona com estado em memória e dados demo.
+- O backend continua emitindo eventos realtime via Socket.IO mesmo sem banco conectado.
+- O painel web e o mobile refletem o mesmo estado do backend e não dependem de polling manual para atualizar a tela principal.
+
+## Wokwi / compilação do firmware
+
+Na raiz do projeto, no Windows:
 
 ```powershell
 npm run compile:wokwi
-````
-
-O script procura primeiro `wokwi/arduino-cli.exe` e depois um `arduino-cli` instalado no PATH. O firmware gerado é salvo em `wokwi/build`, conforme configurado no `wokwi/wokwi.toml`.
-
 ```
 
-## Próximas evoluções
+Esse comando tenta localizar `wokwi/arduino-cli.exe` ou um `arduino-cli` no PATH e gera o firmware em `wokwi/build`.
 
-Estas funcionalidades fazem parte do roadmap e ainda não devem ser apresentadas como concluídas:
+## Roadmap prático
 
-1. Conectar o aplicativo mobile à API com autenticação e configuração de ambiente por dispositivo.
-2. Criar autenticação e perfis separados para voluntários e moradores.
-3. Adicionar testes automatizados de API e testes ponta a ponta com simulador MQTT.
-4. Implementar alertas, relatórios de eficiência hídrica e histórico visual no painel.
-5. Validar o circuito ESP32, relé e válvula em bancada antes do uso em campo.
+Próximas evoluções típicas para a continuidade do projeto:
 
-A base já sobe em Docker e possui o fluxo MQTT descrito, mas o backend ainda mistura operação real com modo demo: telemetria histórica é limitada em memória e colheitas/reservas não persistem. Vou confirmar agora como os clientes consomem a API e se há alguma lacuna de configuração que impeça o primeiro funcionamento integrado.
+- autenticação e perfis de usuário;
+- persistência mais robusta de colheitas e reservas;
+- testes automatizados de API e MQTT;
+- melhorias de observabilidade e alertas;
+- refinamento da lógica de irrigação e validação de hardware em bancada.
 
-O próximo passo técnico é substituir os dados locais do painel web pelo backend real e, em paralelo, tornar a configuração de rede do mobile e do ESP32 explícita. Sem isso, a interface aparenta funcionar, mas não representa o estado do sistema; o teste decisivo é publicar uma telemetria MQTT e observar o mesmo valor em `/status`, web e mobile.
-
-O próximo passo é **conectar o painel web ao backend real** e validar o fluxo completo:
-
-`ESP32 → MQTT → Backend → MongoDB → Web/Mobile`
-
-Atualmente, o backend já recebe MQTT, mas o web ainda usa dados locais e o mobile possui `API_URL` provisório. Portanto, a interface ainda não reflete o estado real da horta.
-
-**Plano de implementação**
-
-**Fase 1: Validar a infraestrutura**
-
-1. Executar `docker compose up --build`.
-2. Confirmar:
-   - `GET http://localhost:3000/health`
-   - MongoDB conectado.
-   - Mosquitto acessível na porta `1883`.
-   - Painel web disponível em `http://localhost:8080`.
-3. Publicar uma telemetria MQTT manualmente.
-4. Confirmar que o valor aparece em `GET /status`.
-
-Critério de aceite: uma mensagem publicada em `horta/telemetry` altera o status retornado pela API.
-
-**Fase 2: Integrar o painel web**
-
-Alterar `App.tsx` para:
-
-- Buscar dados de `/status`.
-- Buscar histórico em `/telemetry/history`.
-- Buscar colheitas em `/harvest`.
-- Enviar comandos reais para `/irrigation`.
-- Criar colheitas via `POST /harvest`.
-- Exibir estados de carregamento, erro e API offline.
-- Configurar a URL da API por variável de ambiente, por exemplo `VITE_API_URL`.
-
-Também será necessário substituir os valores fixos de umidade, temperatura, irrigação e colheitas.
-
-Critério de aceite: ligar a irrigação no painel publica o comando MQTT e o status exibido é atualizado pela API.
-
-**Fase 3: Corrigir a persistência**
-
-O arquivo `index.js` ainda armazena colheitas e reservas em memória. Criar modelos MongoDB para:
-
-- Colheitas.
-- Reservas.
-- Estado atual da irrigação, se necessário.
-- Histórico de telemetria já parcialmente existente.
-
-Critério de aceite: reiniciar o container do backend sem perder colheitas, reservas ou histórico.
-
-**Fase 4: Integrar o aplicativo mobile**
-
-Alterar `App.js` para:
-
-- Remover `http://SEU_IP_LOCAL:3000`.
-- Usar configuração por ambiente ou arquivo de configuração.
-- Buscar status periodicamente.
-- Buscar colheitas pela API.
-- Permitir reservar uma colheita.
-- Reverter o botão de irrigação se a requisição falhar.
-- Mostrar estados de conexão e erro.
-
-No celular físico, a API deve usar o IP da máquina na rede local, não `localhost`.
-
-Critério de aceite: web e mobile exibem o mesmo status e controlam a mesma irrigação.
-
-**Fase 5: Validar o firmware**
-
-Revisar `HortaComunitaria.ino`:
-
-- Configurar SSID, senha e IP do broker.
-- Confirmar se o relé é acionado com nível alto ou baixo.
-- Tratar leituras inválidas do DHT22.
-- Publicar timestamp na telemetria.
-- Definir como o modo manual retorna ao modo automático.
-- Adicionar mecanismo de segurança para desligar a irrigação após tempo máximo.
-- Evitar que a irrigação continue ligada após perda de conexão MQTT.
-
-Critério de aceite: o ESP32 publica telemetria a cada 10 segundos, responde ao comando MQTT e não mantém a válvula ligada em caso de falha.
-
-**Fase 6: Segurança e usuários**
-
-Depois do fluxo técnico funcionar:
-
-- Adicionar autenticação.
-- Criar perfis de voluntário e morador.
-- Restringir controle de irrigação a usuários autorizados.
-- Validar entrada das rotas.
-- Adicionar rate limit.
-- Configurar autenticação ou ACL no Mosquitto.
-- Remover credenciais e configurações sensíveis do código-fonte.
-
-**Fase 7: Testes e operação**
-
-Criar:
-
-- Testes unitários das regras de irrigação e reservas.
-- Testes de API para status, colheitas e comandos.
-- Teste de integração MQTT.
-- Teste ponta a ponta:
-  - publicar telemetria;
-  - verificar backend;
-  - verificar web/mobile;
-  - enviar comando;
-  - confirmar resposta do ESP32.
-- Healthchecks no Docker Compose.
-- Logs estruturados.
-- Backup do MongoDB.
-
-**Ordem recomendada de execução**
+O que está no repositório hoje é a base operacional da horta conectada: sensores, backend, painel, mobile e integração MQTT funcionando como um fluxo coerente.
 
 1. Validar Docker, MQTT e MongoDB.
 2. Integrar o web com a API.
@@ -325,4 +299,7 @@ A primeira entrega funcional deve ser: **telemetria real aparecendo no web e com
 ## Documentação técnica
 
 A visão das integrações entre sensor, MQTT, backend, banco, web, mobile e atuador está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+```
+
 ```
