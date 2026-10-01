@@ -71,6 +71,22 @@ npm start
 
 O celular e o computador precisam estar na mesma rede Wi-Fi. Não use `localhost` no celular: nesse caso, `localhost` aponta para o próprio aparelho. Para Android Emulator, use `http://10.0.2.2:3000`; para um celular físico, use o IP local da máquina.
 
+O mobile segue uma arquitetura separada por responsabilidade:
+
+```text
+app/mobile/
+├── App.tsx
+└── src/
+  ├── components/    # background, métricas, conexão e irrigação
+  ├── hooks/         # estado realtime compartilhado
+  ├── screens/       # status, irrigação e colheitas
+  ├── services/      # API REST e Socket.IO
+  ├── styles/        # tema visual da horta
+  └── types/         # contratos de telemetria, irrigação e colheitas
+```
+
+A tela de irrigação usa o mesmo contrato do web: `on` e `off` ativam o controle manual, e `auto` libera novamente a automação do ESP32. O estado recebido por Socket.IO atualiza a tela sem refresh.
+
 Se o Expo informar que a conexão de dados não é permitida, feche sessões antigas do Expo, execute `npm start` novamente e abra o QR Code da sessão LAN atual. Caso a porta `8081` esteja ocupada, aceite a próxima porta sugerida pelo Expo. Desative temporariamente VPN, dados móveis e isolamento de rede da rede Wi-Fi durante o teste.
 
 ## Executar as três camadas com Docker
