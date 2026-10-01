@@ -6,7 +6,7 @@
 #define WIFI_SSID "Wokwi-GUEST"
 #define WIFI_PASSWORD ""
 
-#define MQTT_BROKER "test.mosquitto.org"
+#define MQTT_BROKER "broker.hivemq.com"
 #define MQTT_PORT 1883
 #define TELEMETRY_TOPIC "horta/telemetry"
 #define IRRIGATION_TOPIC "horta/irrigation"
@@ -23,6 +23,10 @@ unsigned long lastTelemetry = 0;
 bool irrigationOn = false;
 bool manualOverride = false;
 
+String mqttClientId() {
+  return "horta-esp32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+}
+
 void setIrrigation(bool active) {
   digitalWrite(RELAY_PIN, active ? HIGH : LOW);
   irrigationOn = active;
@@ -30,6 +34,7 @@ void setIrrigation(bool active) {
 
 // Conexão Wi-Fi
 void connectWifi() {
+  WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -41,11 +46,14 @@ void connectWifi() {
 // Conexão MQTT
 void connectMqtt() {
   while (!mqttClient.connected()) {
-    if (mqttClient.connect("esp32-horta")) {
+    String clientId = mqttClientId();
+    if (mqttClient.connect(clientId.c_str())) {
       mqttClient.subscribe(IRRIGATION_TOPIC);
       Serial.println("Conectado ao broker MQTT!");
     } else {
-      delay(2000);
+      Serial.print("Falha MQTT, estado: ");
+      Serial.println(mqttClient.state());
+      delay(1000);
     }
   }
 }
@@ -110,9 +118,12 @@ void setup() {
   dht.begin();
 
   mqttClient.setCallback(mqttCallback);
+  mqttClient.setKeepAlive(15);
+  mqttClient.setSocketTimeout(5);
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
 
   connectWifi();
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  lastTelemetry = millis() - 5000;
 }
 
 void loop() {
