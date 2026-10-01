@@ -1,12 +1,18 @@
 import 'dotenv/config';
+import { createServer } from 'node:http';
 import cors from 'cors';
 import express from 'express';
 import mongoose from 'mongoose';
 import mqtt from 'mqtt';
+import { Server } from 'socket.io';
 import { Harvest } from './models/Harvest.js';
 import { Telemetry } from './models/Telemetry.js';
 
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: '*' },
+});
 const port = process.env.PORT || 3000;
 let irrigation = {
   active: false,
@@ -41,6 +47,14 @@ function isMongoReady() {
   return mongoose.connection.readyState === 1;
 }
 
+function getStatus() {
+  return { ...latestTelemetry, irrigation };
+}
+
+function emitStatus() {
+  io.emit('status:update', getStatus());
+}
+
 function serializeHarvest(harvest) {
   const item = harvest.toObject ? harvest.toObject() : harvest;
   return {
@@ -62,11 +76,14 @@ async function seedHarvests() {
 
 app.use(cors());
 app.use(express.json());
+io.on('connection', (socket) => {
+  socket.emit('status:update', getStatus());
+});
 app.get('/health', (_request, response) =>
   response.json({ ok: true, service: 'horta-comunitaria-api' }),
 );
 app.get('/status', (_request, response) =>
-  response.json({ ...latestTelemetry, irrigation }),
+  response.json(getStatus()),
 );
 app.get('/telemetry/history', (_request, response) =>
   response.json(telemetryHistory.slice(-100).reverse()),
@@ -85,6 +102,7 @@ app.post('/irrigation', (request, response) => {
         mode,
         updatedAt: new Date().toISOString(),
       };
+  emitStatus();
   const client = app.locals.mqtt;
   if (client) {
     const topic = process.env.MQTT_IRRIGATION_TOPIC || 'horta/irrigation';
@@ -205,12 +223,14 @@ async function connectIntegrations() {
               mode: data.mode || 'automatic',
               updatedAt: new Date().toISOString(),
             };
+            emitStatus();
           } else if (data.command === 'auto') {
             irrigation = {
               ...irrigation,
               mode: 'automatic',
               updatedAt: new Date().toISOString(),
             };
+            emitStatus();
           }
           return;
         }
@@ -229,6 +249,8 @@ async function connectIntegrations() {
           };
         }
         telemetryHistory.push(latestTelemetry);
+        io.emit('telemetry:update', latestTelemetry);
+        emitStatus();
         if (mongoose.connection.readyState === 1) {
           Telemetry.create(latestTelemetry).catch(() =>
             console.error('Falha ao salvar telemetria'),
@@ -245,6 +267,6 @@ async function connectIntegrations() {
 connectIntegrations().catch(() =>
   console.log('Falha ao inicializar integrações; usando memória'),
 );
-app.listen(port, () =>
+httpServer.listen(port, () =>
   console.log(`Horta Comunitária API disponível em http://localhost:${port}`),
 );
