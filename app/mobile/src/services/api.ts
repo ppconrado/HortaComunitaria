@@ -1,7 +1,6 @@
 import type { Harvest, HortaStatus, Telemetry } from '../types/api';
 
-export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.51:3000';
+export const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 export async function requestApi<T>(
   path: string,

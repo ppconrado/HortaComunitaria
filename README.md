@@ -159,21 +159,36 @@ npm --prefix app/web run preview
 cd app/mobile
 copy .env.example .env
 npm install
-npx expo start
+npm run start
 ```
 
-Arquivo `.env` usado pelo app:
+Na primeira execução, o Expo exibirá no terminal o endereço usado pela rede
+local, por exemplo `exp://<IP_LOCAL>:8081`. Use somente o IP exibido nessa
+mensagem para configurar a URL da API:
 
-```env
-EXPO_PUBLIC_API_URL=http://192.168.0.51:3000
-```
+1. Pare o Expo com `Ctrl+C`.
+2. Abra `app/mobile/.env` e substitua `<SEU_IP_LOCAL>` pelo IP mostrado pelo
+   Expo:
+
+   ```env
+   EXPO_PUBLIC_API_URL=http://<SEU_IP_LOCAL>:3000
+   ```
+
+3. Reinicie o Expo:
+
+   ```bash
+   npm run start
+   ```
 
 Importante:
 
-- no celular físico, use o IP da máquina na rede local;
-- não use `localhost` no dispositivo móvel;
-- em emulador Android, `10.0.2.2` costuma funcionar;
-- o celular e o computador devem estar na mesma rede Wi‑Fi.
+- o IP usado na URL da API é o mesmo IP local exibido pelo Expo, mas a porta da
+  API é `3000` (não use a porta `8081` do Expo);
+- o celular e o computador devem estar na mesma rede Wi-Fi;
+- não use `localhost` no dispositivo móvel, pois ele aponta para o próprio celular;
+- em emulador Android, use `http://10.0.2.2:3000`;
+- em simulador iOS, `http://localhost:3000` normalmente funciona;
+- confirme que a API está em execução na porta `3000` antes de abrir o app.
 
 ### 4) Docker Compose
 
