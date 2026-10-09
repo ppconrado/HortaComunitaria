@@ -279,15 +279,88 @@ curl -X POST http://localhost:3000/irrigation \
 - O backend continua emitindo eventos realtime via Socket.IO mesmo sem banco conectado.
 - O painel web e o mobile refletem o mesmo estado do backend e não dependem de polling manual para atualizar a tela principal.
 
-## Wokwi / compilação do firmware
+## Wokwi / simulador ESP32
 
-Na raiz do projeto, no Windows:
+O repositório já inclui o firmware compilado em
+`wokwi/build/esp32.esp32.esp32/wokwi.ino.elf`. Para apenas executar o
+simulador, não é necessário recompilar.
+
+### Executar em outro computador
+
+O fluxo mínimo no Windows é instalar o Wokwi CLI, configurar um token e iniciar
+o firmware já compilado. Depois de clonar o repositório, abra o PowerShell na
+pasta do projeto:
 
 ```powershell
-npm run compile:wokwi
+iwr https://wokwi.com/ci/install.ps1 -useb | iex
+wokwi-cli --version
 ```
 
-Esse comando tenta localizar `wokwi/arduino-cli.exe` ou um `arduino-cli` no PATH e gera o firmware em `wokwi/build`.
+Se `wokwi-cli` não for reconhecido, feche e abra o PowerShell para atualizar o
+`PATH`. Crie um token no [Wokwi CI Dashboard](https://wokwi.com/dashboard/ci) e
+substitua o valor abaixo pelo seu token:
+
+```powershell
+$env:WOKWI_CLI_TOKEN = "<SEU_TOKEN_WOKWI>"
+cd wokwi
+wokwi-cli .
+```
+
+O token vale somente para essa sessão do terminal e não deve ser colocado em
+`tasks.json` ou em outro arquivo versionado. O simulador usa o Wi-Fi virtual
+`Wokwi-GUEST` e o broker MQTT público `broker.hivemq.com:1883`, nos tópicos
+`horta/telemetry` e `horta/irrigation`.
+
+No Linux ou macOS, instale o CLI seguindo a
+[documentação oficial](https://docs.wokwi.com/wokwi-ci/cli-installation) e
+execute os mesmos comandos de configuração e execução.
+
+### Executar pela task do VS Code
+
+No Windows, defina o token antes de abrir o VS Code e abra a pasta `wokwi/`:
+
+```powershell
+$env:WOKWI_CLI_TOKEN = "<SEU_TOKEN_WOKWI>"
+code wokwi
+```
+
+Depois selecione **Tasks: Run Task > Rodar Wokwi CLI**. Essa task recompila o
+firmware com `compile.ps1` antes de iniciar o simulador. Use-a quando o arquivo
+`wokwi.ino` tiver sido alterado.
+
+Para executar sem recompilar, use o comando manual da seção anterior. A
+recompilação no Windows utiliza o `wokwi/arduino-cli.exe`; se as dependências
+Arduino ainda não estiverem instaladas, a compilação poderá solicitar o core
+ESP32 e as bibliotecas de `wokwi/libraries.txt`.
+
+### Executar o projeto completo
+
+Para integrar o simulador com o projeto, inicie o Docker Compose na raiz do
+repositório:
+
+```powershell
+docker compose up --build -d
+```
+
+O Compose inicia os quatro serviços necessários:
+
+- backend/API;
+- painel web;
+- MongoDB;
+- Mosquitto.
+
+Depois, em outro terminal, execute o Wokwi conforme a seção anterior. O backend
+do Compose já está configurado para receber a telemetria do simulador pelo
+broker MQTT público usado pelo firmware.
+
+Verifique se a API está funcionando:
+
+```powershell
+curl http://localhost:3000/health
+```
+
+Acesse o painel web em `http://localhost:8080`. Para o app mobile, use a URL da
+API configurada em `app/mobile/.env`, conforme as instruções anteriores.
 
 ## Roadmap prático
 
@@ -314,7 +387,3 @@ A primeira entrega funcional deve ser: **telemetria real aparecendo no web e com
 ## Documentação técnica
 
 A visão das integrações entre sensor, MQTT, backend, banco, web, mobile e atuador está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-```
-
-```
